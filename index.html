@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>视听语音整合训练系统 - v3.0</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#3b82f6',
+            secondary: '#8b5cf6',
+            success: '#10b981',
+            warning: '#f59e0b',
+            danger: '#ef4444',
+            cyan: '#06b6d4',
+            pink: '#ec4899'
+          }
+        }
+      }
+    }
+  </script>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="bg-gray-100 min-h-screen">
+
+<!-- ====== 屏幕1：主菜单 ====== -->
+<div id="screen_menu" class="screen active">
+  <div class="container mx-auto px-4 py-8 max-w-5xl">
+    <div class="bg-white rounded-2xl shadow-xl p-8">
+      <div class="text-center mb-8">
+        <h1 class="text-3xl font-bold text-gray-800 mb-1">🎧 视听语音整合训练系统</h1>
+        <p class="text-gray-500 text-sm">v3.0 · 心理物理法 · 自适应阈值 · 训练+测试双板块</p>
+      </div>
+
+      <!-- 被试信息 -->
+      <div class="grid grid-cols-2 gap-4 mb-6">
+        <div>
+          <label class="block text-sm font-medium text-gray-600 mb-1">被试编号</label>
+          <input type="text" id="subjectId" placeholder="例：S001" value="S001"
+            class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary focus:outline-none text-lg">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-600 mb-1">实验日期</label>
+          <input type="date" id="expDate"
+            class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary focus:outline-none">
+        </div>
+      </div>
+
+      <!-- 实验阶段 -->
+      <div class="mb-6">
+        <label class="block text-sm font-medium text-gray-600 mb-2">选择实验阶段</label>
+        <div class="grid grid-cols-3 gap-3">
+          <button onclick="selectPhase('pre')" id="phase_pre" class="phase-btn px-4 py-3 rounded-xl border-2 border-gray-200 text-center hover:border-primary transition-all">
+            <div class="text-2xl mb-1">📊</div>
+            <div class="font-bold text-sm">训练前测试</div>
+            <div class="text-xs text-gray-400">基线阈值测定</div>
+          </button>
+          <button onclick="selectPhase('train')" id="phase_train" class="phase-btn px-4 py-3 rounded-xl border-2 border-primary bg-blue-50 text-center active">
+            <div class="text-2xl mb-1">🏋️</div>
+            <div class="font-bold text-sm text-primary">训练阶段</div>
+            <div class="text-xs text-blue-400">最高阈值重复训练</div>
+          </button>
+          <button onclick="selectPhase('post')" id="phase_post" class="phase-btn px-4 py-3 rounded-xl border-2 border-gray-200 text-center hover:border-primary transition-all">
+            <div class="text-2xl mb-1">📈</div>
+            <div class="font-bold text-sm">训练后测试</div>
+            <div class="text-xs text-gray-400">效果评估</div>
+          </button>
+        </div>
+      </div>
+
+      <!-- 功能选择 -->
+      <div class="mb-6">
+        <label class="block text-sm font-medium text-gray-600 mb-2">选择功能模块</label>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <button onclick="selectFunc(1)" id="func1" class="func-btn p-4 rounded-xl border-2 border-primary bg-blue-50 text-center">
+            <div class="text-3xl mb-1">🎯</div>
+            <div class="font-bold text-sm">功能一</div>
+            <div class="text-xs text-gray-500">抗干扰训练</div>
+            <div class="text-xs text-gray-400 mt-1">纯音频 + 噪音</div>
+          </button>
+          <button onclick="selectFunc(2)" id="func2" class="func-btn p-4 rounded-xl border-2 border-gray-200 text-center hover:border-primary transition-all">
+            <div class="text-3xl mb-1">👁️</div>
+            <div class="font-bold text-sm">功能二</div>
+            <div class="text-xs text-gray-500">视觉整合训练</div>
+            <div class="text-xs text-gray-400 mt-1">口型 + SNR + 模糊度</div>
+          </button>
+          <button onclick="selectFunc(3)" id="func3" class="func-btn p-4 rounded-xl border-2 border-gray-200 text-center hover:border-primary transition-all">
+            <div class="text-3xl mb-1">⏱️</div>
+            <div class="font-bold text-sm">功能三</div>
+            <div class="text-xs text-gray-500">异步校准训练</div>
+            <div class="text-xs text-gray-400 mt-1">双视频 SOA</div>
+          </button>
+          <button onclick="selectFunc(4)" id="func4" class="func-btn p-4 rounded-xl border-2 border-gray-200 text-center hover:border-primary transition-all">
+            <div class="text-3xl mb-1">🧠</div>
+            <div class="font-bold text-sm">功能四</div>
+            <div class="text-xs text-gray-500">注意定位训练</div>
+            <div class="text-xs text-gray-400 mt-1">双说话人竞争</div>
+          </button>
+        </div>
+      </div>
+
+      <!-- 配置摘要 -->
+      <div id="configSummary" class="p-4 bg-blue-50 rounded-xl mb-6 text-sm text-blue-700">
+        📋 当前配置：<span id="cfgText">功能一 | 训练中 | 被试 S001</span>
+      </div>
+
+      <!-- 操作按钮 -->
+      <div class="grid grid-cols-2 gap-4">
+        <button onclick="goToPreparation()" class="px-8 py-4 bg-primary hover:bg-blue-600 text-white text-xl font-bold rounded-xl shadow-lg transition-all">
+          ⚙️ 进入材料准备
+        </button>
+        <button onclick="showHistory()" class="px-8 py-4 bg-gray-500 hover:bg-gray-600 text-white text-xl font-bold rounded-xl shadow-lg transition-all">
+          📁 历史记录
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ====== 屏幕2：材料准备 ====== -->
+<div id="screen_prep" class="screen">
+  <div class="container mx-auto px-4 py-6 max-w-6xl">
+    <div class="flex items-center justify-between mb-6">
+      <div class="flex items-center gap-4">
+        <button onclick="goToMenu()" class="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300 text-sm">← 返回菜单</button>
+        <div>
+          <h2 class="text-xl font-bold text-gray-800" id="prepTitle">材料准备 · 功能一</h2>
+          <p class="text-xs text-gray-500" id="prepSubtitle">训练中阶段</p>
+        </div>
+      </div>
+      <div id="phaseIndicator" class="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg text-sm font-medium">训练中</div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <!-- 左：变量控制 -->
+      <div class="bg-white rounded-2xl shadow-xl p-6">
+        <h3 class="font-bold text-gray-800 mb-4 flex items-center gap-2"><span>⚙️</span> 实验变量设置</h3>
+
+        <!-- SNR变量 -->
+        <div id="varSNR" class="mb-5 p-4 bg-blue-50 rounded-xl">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+              <input type="checkbox" id="enSNR" checked class="w-4 h-4">
+              <span class="font-bold text-blue-800">🔊 SNR（信噪比）</span>
+            </div>
+            <select id="snrMode" onchange="updateSNRSettings()" class="text-sm px-2 py-1 rounded border">
+              <option value="adaptive">自适应 (1-up/3-down)</option>
+              <option value="fixed">固定阈值测试</option>
+              <option value="combinatorial">组合遍历</option>
+            </select>
+          </div>
+          <div class="grid grid-cols-7 gap-1 mb-2">
+            <label class="text-center cursor-pointer"><input type="checkbox" class="snr-lvl w-4 h-4" value="6"><br><span class="text-xs">+6</span></label>
+            <label class="text-center cursor-pointer"><input type="checkbox" class="snr-lvl w-4 h-4" value="3"><br><span class="text-xs">+3</span></label>
+            <label class="text-center cursor-pointer"><input type="checkbox" class="snr-lvl w-4 h-4" value="0" checked><br><span class="text-xs">0</span></label>
+            <label class="text-center cursor-pointer"><input type="checkbox" class="snr-lvl w-4 h-4" value="-3" checked><br><span class="text-xs">-3</span></label>
+            <label class="text-center cursor-pointer"><input type="checkbox" class="snr-lvl w-4 h-4" value="-6" checked><br><span class="text-xs">-6</span></label>
+            <label class="text-center cursor-pointer"><input type="checkbox" class="snr-lvl w-4 h-4" value="-9"><br><span class="text-xs">-9</span></label>
+            <label class="text-center cursor-pointer"><input type="checkbox" class="snr-lvl w-4 h-4" value="-12"><br><span class="text-xs">-12</span></label>
+          </div>
+          <div class="flex gap-2 text-xs text-blue-600 items-center flex-wrap">
+            <span>顺序：</span>
+            <button onclick="setOrder('snr','random')" id="snrOrderR" class="px-2 py-0.5 rounded bg-blue-200 font-medium">🔀随机</button>
+            <button onclick="setOrder('snr','seq')" id="snrOrderS" class="px-2 py-0.5 rounded bg-gray-100">📊顺序</button>
+            <span class="ml-2">重复：<input type="number" id="snrReps" value="3" min="1" max="20" class="w-12 px-1 border rounded text-center">次/档</span>
+          </div>
+          <div id="adaptiveInfo" class="mt-2 p-2 bg-blue-100 rounded text-xs text-blue-700">
+            💡 <strong>1-up/3-down算法：</strong>连续答对3题→SNR↓1档（变难）｜答错1题→SNR↑1档（变易）｜反转8次后停止
+          </div>
+        </div>
+
+        <!-- 模糊度变量 -->
+        <div id="varBlur" class="mb-5 p-4 bg-purple-50 rounded-xl hidden">
+          <div class="flex items-center gap-2 mb-2">
+            <input type="checkbox" id="enBlur" checked class="w-4 h-4">
+            <span class="font-bold text-purple-800">🎭 模糊度（像素化马赛克）</span>
+          </div>
+          <div class="grid grid-cols-7 gap-1 mb-2">
+            <label class="text-center cursor-pointer"><input type="checkbox" class="blur-lvl w-4 h-4" value="0" checked><br><span class="text-xs">0%</span><br><span class="text-xs text-green-600">清晰</span></label>
+            <label class="text-center cursor-pointer"><input type="checkbox" class="blur-lvl w-4 h-4" value="10"><br><span class="text-xs">10%</span></label>
+            <label class="text-center cursor-pointer"><input type="checkbox" class="blur-lvl w-4 h-4" value="20"><br><span class="text-xs">20%</span></label>
+            <label class="text-center cursor-pointer"><input type="checkbox" class="blur-lvl w-4 h-4" value="30"><br><span class="text-xs">30%</span></label>
+            <label class="text-center cursor-pointer"><input type="checkbox" class="blur-lvl w-4 h-4" value="40"><br><span class="text-xs">40%</span></label>
+            <label class="text-center cursor-pointer"><input type="checkbox" class="blur-lvl w-4 h-4" value="50"><br><span class="text-xs">50%</span></label>
+            <label class="text-center cursor-pointer"><input type="checkbox" class="blur-lvl w-4 h-4" value="60"><br><span class="text-xs">60%</span><br><span class="text-xs text-red-500">极糊</span></label>
+          </div>
+          <div class="flex gap-2 text-xs text-purple-600 items-center flex-wrap">
+            <span>顺序：</span>
+            <button onclick="setOrder('blur','random')" id="blurOrderR" class="px-2 py-0.5 rounded bg-purple-200 font-medium">🔀随机</button>
+            <button onclick="setOrder('blur','seq')" id="blurOrderS" class="px-2 py-0.5 rounded bg-gray-100">📊顺序</button>
+            <span class="ml-2">重复：<input type="number" id="blurReps" value="3" min="1" max="20" class="w-12 px-1 border rounded text-center">次/档</span>
+          </div>
+        </div>
+
+        <!-- SOA变量 -->
+        <div id="varSOA" class="mb-5 p-4 bg-orange-50 rounded-xl hidden">
+          <div class="flex items-center gap-2 mb-2">
+            <input type="checkbox" id="enSOA" checked class="w-4 h-4">
+            <span class="font-bold text-orange-800">⏱️ 视听同步偏移 (SOA)</span>
+          </div>
+          <div class="grid grid-cols-7 gap-0.5 mb-2">
+            <label class="text-center cursor-pointer"><input type="checkbox" class="soa-lvl w-3 h-3" value="-300"><br><span class="text-xs">-300</span></label>
+            <label class="text-center cursor-pointer"><input type="checkbox" class="soa-lvl w-3 h-3" value="-200"><br><span class="text-xs">-200</span></label>
+            <label class="text-center cursor-pointer"><input type="checkbox" class="soa-lvl w-3 h-3" value="-100"><br><span class="text-xs">-100</span></label>
+            <label class="text-center cursor-pointer bg-orange-200 rounded"><input type="checkbox" class="soa-lvl w-3 h-3" value="0" checked><br><span class="text-xs text-orange-600 font-bold">0</span></label>
+            <label class="text-center cursor-pointer"><input type="checkbox" class="soa-lvl w-3 h-3" value="100"><br><span class="text-xs">+100</span></label>
+            <label class="text-center cursor-pointer"><input type="checkbox" class="soa-lvl w-3 h-3" value="200"><br><span class="text-xs">+200</span></label>
+            <label class="text-center cursor-pointer"><input type="checkbox" class="soa-lvl w-3 h-3" value="300"><br><span class="text-xs">+300</span></label>
+          </div>
+          <div class="flex gap-2 text-xs text-orange-600 items-center flex-wrap">
+            <span>顺序：</span>
+            <button onclick="setOrder('soa','random')" id="soaOrderR" class="px-2 py-0.5 rounded bg-orange-200 font-medium">🔀随机</button>
+            <button onclick="setOrder('soa','seq')" id="soaOrderS" class="px-2 py-0.5 rounded bg-gray-100">📊顺序</button>
+            <span class="ml-2">重复：<input type="number" id="soaReps" value="3" min="1" max="20" class="w-12 px-1 border rounded text-center">次/档</span>
+          </div>
+        </div>
+
+        <!-- 注意条件 -->
+        <div id="varAtt" class="mb-5 p-4 bg-green-50 rounded-xl hidden">
+          <div class="flex items-center gap-2 mb-2">
+            <input type="checkbox" id="enAtt" checked class="w-4 h-4">
+            <span class="font-bold text-green-800">🧠 注意条件</span>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <label class="flex items-center gap-2 p-2 bg-white rounded-lg cursor-pointer border border-green-200">
+              <input type="checkbox" class="att-lvl w-4 h-4" value="single" checked>
+              <span class="text-sm">🎤 单说话人</span>
+            </label>
+            <label class="flex items-center gap-2 p-2 bg-white rounded-lg cursor-pointer border border-green-200">
+              <input type="checkbox" class="att-lvl w-4 h-4" value="dual" checked>
+              <span class="text-sm">🎭 双说话人竞争</span>
+            </label>
+          </div>
+          <div class="flex gap-2 text-xs text-green-600 mt-2 items-center">
+            <span>顺序：</span>
+            <button onclick="setOrder('att','random')" id="attOrderR" class="px-2 py-0.5 rounded bg-green-200 font-medium">🔀随机</button>
+            <button onclick="setOrder('att','seq')" id="attOrderS" class="px-2 py-0.5 rounded bg-gray-100">📊顺序</button>
+          </div>
+        </div>
+
+        <!-- 试次预览 -->
+        <div class="mt-4 p-3 bg-gray-100 rounded-xl text-sm">
+          <div class="font-medium text-gray-700 mb-2">📋 试次统计 <span id="previewTotal" class="text-primary font-bold">0</span> 个试次</div>
+          <div id="trialPreview" class="text-xs text-gray-500 max-h-32 overflow-y-auto space-y-1">
+            <!-- 动态生成 -->
+          </div>
+        </div>
+      </div>
+
+      <!-- 右：预览 + 生成 -->
+      <div class="space-y-4">
+        <!-- 材料预览 -->
+        <div class="bg-white rounded-2xl shadow-xl p-6">
+          <h3 class="font-bold text-gray-800 mb-3 flex items-center gap-2"><span>👁️</span> 材料预览</h3>
+
+          <!-- 功能1预览：纯音频 -->
+          <div id="preview1" class="text-center py-6">
+            <div class="text-6xl mb-3">🔊</div>
+            <div class="text-gray-500 text-sm">功能一：纯音频 + 噪音（无视频）</div>
+            <div class="mt-4 p-3 bg-blue-50 rounded-lg text-xs text-blue-600">
+              预览不同SNR的噪音混合效果
+            </div>
+            <input type="range" id="previewSNRSlider" min="-12" max="6" step="3" value="0" class="w-full mt-3">
+            <div class="flex justify-between text-xs text-gray-400 mt-1">
+              <span>-12dB</span><span>-6</span><span>0</span><span>+3</span><span>+6dB</span>
+            </div>
+            <div class="mt-2 text-lg font-bold text-blue-600" id="previewSNRText">SNR: 0 dB</div>
+            <button onclick="playPreview()" class="mt-3 px-6 py-2 bg-primary text-white rounded-lg text-sm hover:bg-blue-600">
+              ▶️ 播放预览
+            </button>
+          </div>
+
+          <!-- 功能2预览：口型 -->
+          <div id="preview2" class="hidden">
+            <div class="relative rounded-xl overflow-hidden bg-gray-900" style="aspect-ratio:16/9;">
+              <video id="previewVideo" class="w-full h-full object-cover" autoplay muted loop playsinline>
+                <source id="previewSrc" src="" type="video/mp4">
+              </video>
+            </div>
+            <div class="mt-3">
+              <label class="text-xs text-gray-500">马赛克模糊度：</label>
+              <input type="range" id="previewBlurSlider" min="0" max="60" step="5" value="0" class="w-full">
+              <div class="flex justify-between text-xs text-gray-400 mt-1">
+                <span>0% 清晰</span><span>30%</span><span>60% 马赛克</span>
+              </div>
+            </div>
+            <div class="mt-2 text-sm">
+              <span class="px-2 py-1 bg-blue-100 rounded text-blue-600 text-xs">SNR: <span id="prev2SNR">0</span>dB</span>
+              <span class="px-2 py-1 bg-purple-100 rounded text-purple-600 text-xs">模糊度: <span id="prev2Blur">0</span>%</span>
+            </div>
+            <button onclick="playPreview()" class="mt-3 w-full px-6 py-2 bg-primary text-white rounded-lg text-sm hover:bg-blue-600">
+              ▶️ 播放预览
+            </button>
+          </div>
+
+          <!-- 功能3预览：双视频 -->
+          <div id="preview3" class="hidden">
+            <div class="grid grid-cols-2 gap-2">
+              <div class="relative rounded-lg overflow-hidden bg-gray-900" style="aspect-ratio:16/9;">
+                <video id="previewVideoA" class="w-full h-full object-cover" autoplay muted loop playsinline>
+                  <source id="previewSrcA" src="" type="video/mp4">
+                </video>
+                <div class="absolute bottom-1 left-1 bg-black/60 text-white text-xs px-1 rounded">A</div>
+              </div>
+              <div class="relative rounded-lg overflow-hidden bg-gray-900" style="aspect-ratio:16/9;">
+                <video id="previewVideoB" class="w-full h-full object-cover" autoplay muted loop playsinline>
+                  <source id="previewSrcB" src="" type="video/mp4">
+                </video>
+                <div class="absolute bottom-1 right-1 bg-black/60 text-white text-xs px-1 rounded">B</div>
+              </div>
+            </div>
+            <div class="mt-3">
+              <label class="text-xs text-gray-500">SOA偏移：</label>
+              <input type="range" id="previewSOASlider" min="-300" max="300" step="50" value="0" class="w-full">
+              <div class="flex justify-between text-xs text-gray-400 mt-1">
+                <span>-300ms(提前)</span><span>0</span><span>+300ms(滞后)</span>
+              </div>
+              <div class="mt-1 text-center">
+                <span class="px-3 py-1 bg-orange-100 rounded text-orange-600 text-sm font-bold" id="prev3SOAText">SOA: 0 ms</span>
+              </div>
+            </div>
+            <button onclick="playPreview()" class="mt-3 w-full px-6 py-2 bg-primary text-white rounded-lg text-sm hover:bg-blue-600">
+              ▶️ 播放预览
+            </button>
+          </div>
+
+          <!-- 功能4预览：双说话人 -->
+          <div id="preview4" class="hidden">
+            <div class="grid grid-cols-2 gap-2">
+              <div class="relative rounded-lg overflow-hidden bg-gray-900" style="aspect-ratio:16/9;">
+                <video id="previewMain" class="w-full h-full object-cover" autoplay muted loop playsinline>
+                  <source id="previewMainSrc" src="" type="video/mp4">
+                </video>
+                <div class="absolute top-1 left-1 bg-blue-600 text-white text-xs px-1 rounded">目标</div>
+              </div>
+              <div class="relative rounded-lg overflow-hidden bg-gray-900" style="aspect-ratio:16/9;">
+                <video id="previewDist" class="w-full h-full object-cover" autoplay muted loop playsinline>
+                  <source id="previewDistSrc" src="" type="video/mp4">
+                </video>
+                <div class="absolute top-1 right-1 bg-red-600 text-white text-xs px-1 rounded">干扰</div>
+              </div>
+            </div>
+            <div class="mt-2 p-2 bg-green-50 rounded text-xs text-green-600">
+              目标说话人 + 干扰说话人 + 噪音（SNR可调）
+            </div>
+            <button onclick="playPreview()" class="mt-3 w-full px-6 py-2 bg-primary text-white rounded-lg text-sm hover:bg-blue-600">
+              ▶️ 播放预览
+            </button>
+          </div>
+        </div>
+
+        <!-- 生成按钮 -->
+        <div class="bg-white rounded-2xl shadow-xl p-6">
+          <h3 class="font-bold text-gray-800 mb-3">🚀 准备就绪</h3>
+          <div class="p-3 bg-blue-50 rounded-lg text-sm text-blue-700 mb-4">
+            <div id="summaryText">请检查上方设置</div>
+          </div>
+          <button onclick="generateTrials()" class="w-full py-4 bg-success hover:bg-emerald-600 text-white text-lg font-bold rounded-xl shadow-lg transition-all">
+            🔧 生成程序
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ====== 屏幕3：生成完成 ====== -->
+<div id="screen_generate" class="screen">
+  <div class="container mx-auto px-4 py-8 max-w-2xl">
+    <div class="bg-white rounded-2xl shadow-xl p-8 text-center">
+      <div class="text-6xl mb-4">✅</div>
+      <h2 class="text-2xl font-bold text-gray-800 mb-2">程序生成完成！</h2>
+      <p class="text-gray-500 mb-6">已生成 <span id="generateCount" class="text-primary font-bold">0</span> 个试次</p>
+      
+      <!-- ✅ 动态生成的实验设置摘要 -->
+      <div class="p-4 bg-gray-50 rounded-xl mb-6 text-left text-sm">
+        <h3 class="font-bold text-gray-700 mb-2">📋 实验设置摘要：</h3>
+        <ul id="expSettingsList" class="text-gray-600 space-y-1">
+          <!-- 动态生成 -->
+        </ul>
+      </div>
+      
+      <div class="p-4 bg-blue-50 rounded-xl mb-6 text-left text-sm">
+        <h3 class="font-bold text-blue-700 mb-2">🎯 实验参数：</h3>
+        <ul id="expParamsList" class="text-blue-600 space-y-1">
+          <!-- 动态生成 -->
+        </ul>
+      </div>
+      
+      <div class="flex gap-4 justify-center">
+        <button onclick="goToPreparation()" class="px-8 py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold rounded-xl">
+          ← 返回修改
+        </button>
+        <button onclick="startExperiment()" class="px-8 py-3 bg-success hover:bg-emerald-600 text-white font-bold rounded-xl shadow-lg">
+          ▶️ 开始实验
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ====== 屏幕4：实验进行中 ====== -->
+<div id="screen_exp" class="screen">
+  <div class="container mx-auto px-4 py-6 max-w-6xl">
+    <div class="flex items-center justify-between mb-4">
+      <div class="flex items-center gap-4">
+        <button onclick="confirmQuit()" class="px-3 py-1 bg-red-100 text-red-600 rounded-lg text-sm hover:bg-red-200">❌ 退出</button>
+        <div>
+          <div class="font-bold text-gray-800" id="expTitleBar">功能一 · 训练前测试</div>
+          <div class="text-xs text-gray-500" id="expSubtitleBar">被试 S001</div>
+        </div>
+      </div>
+      <div class="flex items-center gap-3">
+        <div id="expPhaseTag" class="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg text-sm font-medium">训练中</div>
+      </div>
+    </div>
+
+    <!-- 进度 -->
+    <div class="bg-white rounded-xl p-4 mb-4 shadow">
+      <div class="flex justify-between text-sm text-gray-500 mb-2">
+        <span id="expProgressText">试次 0 / 0</span>
+        <span id="expConditionText">条件：--</span>
+      </div>
+      <div class="h-2 bg-gray-200 rounded-full overflow-hidden">
+        <div id="expProgressBar" class="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all" style="width:0%"></div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <!-- 左侧：视频/音频 -->
+      <div class="lg:col-span-2 space-y-3">
+
+        <!-- 功能1：纯音频 -->
+        <div id="expView1" class="bg-white rounded-2xl shadow-xl p-6">
+          <div class="text-center py-6">
+            <div class="text-8xl mb-3">🔊</div>
+            <div class="text-gray-500 mb-2">请仔细听音频内容</div>
+            <div class="inline-block px-8 py-4 bg-blue-50 rounded-2xl">
+              <div class="text-xs text-blue-400 mb-1">当前 SNR</div>
+              <div class="text-4xl font-bold text-blue-600" id="expSNRDisplay">0 dB</div>
+            </div>
+          </div>
+          <button onclick="expPlay()" id="exp1PlayBtn" class="w-full mt-2 py-4 bg-emerald-500 hover:bg-emerald-600 text-white text-xl font-bold rounded-xl shadow-lg transition-all">
+            ▶️ 播放音频（空格）
+          </button>
+        </div>
+
+        <!-- 功能2：口型 -->
+        <div id="expView2" class="bg-white rounded-2xl shadow-xl p-6 hidden">
+          <div class="text-gray-500 text-sm mb-2">请结合口型信息，听辨内容</div>
+          <div class="relative rounded-xl overflow-hidden bg-gray-900" style="aspect-ratio:16/9;">
+            <video id="expVideo" class="w-full h-full object-cover" autoplay muted playsinline>
+              <source id="expVideoSrc" src="" type="video/mp4">
+            </video>
+          </div>
+          <div class="mt-3 grid grid-cols-2 gap-2">
+            <div class="text-center p-2 bg-blue-50 rounded-lg">
+              <div class="text-xs text-gray-400">SNR</div>
+              <div class="font-bold text-blue-600" id="exp2SNR">0 dB</div>
+            </div>
+            <div class="text-center p-2 bg-purple-50 rounded-lg">
+              <div class="text-xs text-gray-400">模糊度</div>
+              <div class="font-bold text-purple-600" id="exp2Blur">0%</div>
+            </div>
+          </div>
+          <button onclick="expPlay()" id="exp2PlayBtn" class="w-full mt-3 py-3 bg-emerald-500 hover:bg-emerald-600 text-white text-lg font-bold rounded-xl shadow-lg">
+            ▶️ 播放（空格）
+          </button>
+        </div>
+
+        <!-- 功能3：双视频 -->
+        <div id="expView3" class="bg-white rounded-2xl shadow-xl p-6 hidden">
+          <div class="text-gray-500 text-sm mb-2">请注意两个说话人的同步关系</div>
+          <div class="grid grid-cols-2 gap-2">
+            <div class="relative rounded-xl overflow-hidden bg-gray-900" style="aspect-ratio:16/9;">
+              <video id="expVideoA" class="w-full h-full object-cover" autoplay muted playsinline>
+                <source id="expSrcA" src="" type="video/mp4">
+              </video>
+              <div class="absolute bottom-1 left-1 bg-black/60 text-white text-xs px-1 rounded">说话人A</div>
+            </div>
+            <div class="relative rounded-xl overflow-hidden bg-gray-900" style="aspect-ratio:16/9;">
+              <video id="expVideoB" class="w-full h-full object-cover" autoplay muted playsinline>
+                <source id="expSrcB" src="" type="video/mp4">
+              </video>
+              <div class="absolute bottom-1 right-1 bg-black/60 text-white text-xs px-1 rounded">说话人B</div>
+            </div>
+          </div>
+          <div class="mt-3 text-center">
+            <span class="px-6 py-2 bg-orange-50 rounded-lg text-orange-600 font-bold text-xl" id="exp3SOA">0 ms</span>
+          </div>
+          <button onclick="expPlay()" id="exp3PlayBtn" class="w-full mt-3 py-3 bg-emerald-500 hover:bg-emerald-600 text-white text-lg font-bold rounded-xl shadow-lg">
+            ▶️ 同步播放（空格）
+          </button>
+        </div>
+
+        <!-- 功能4：双说话人 -->
+        <div id="expView4" class="bg-white rounded-2xl shadow-xl p-6 hidden">
+          <div class="text-gray-500 text-sm mb-2">请定位目标说话人的内容</div>
+          <div class="grid grid-cols-2 gap-2">
+            <div class="relative rounded-xl overflow-hidden bg-gray-900" style="aspect-ratio:16/9;">
+              <video id="expVideoTarget" class="w-full h-full object-cover" autoplay muted playsinline>
+                <source id="expTargetSrc" src="" type="video/mp4">
+              </video>
+              <div class="absolute top-1 left-1 bg-blue-600 text-white text-xs px-2 py-0.5 rounded">👤 目标</div>
+            </div>
+            <div class="relative rounded-xl overflow-hidden bg-gray-900" style="aspect-ratio:16/9;" id="distractorWrapper">
+              <video id="expVideoDist" class="w-full h-full object-cover" autoplay muted playsinline>
+                <source id="expDistSrc" src="" type="video/mp4">
+              </video>
+              <div class="absolute top-1 right-1 bg-red-600 text-white text-xs px-2 py-0.5 rounded">🚫 干扰</div>
+            </div>
+          </div>
+          <div class="mt-3 grid grid-cols-2 gap-2">
+            <div class="text-center p-2 bg-blue-50 rounded-lg">
+              <div class="text-xs text-gray-400">条件</div>
+              <div class="font-bold text-blue-600" id="exp4Att">单说话人</div>
+            </div>
+            <div class="text-center p-2 bg-orange-50 rounded-lg">
+              <div class="text-xs text-gray-400">SNR</div>
+              <div class="font-bold text-orange-600" id="exp4SNR">0 dB</div>
+            </div>
+          </div>
+          <button onclick="expPlay()" id="exp4PlayBtn" class="w-full mt-3 py-3 bg-emerald-500 hover:bg-emerald-600 text-white text-lg font-bold rounded-xl shadow-lg">
+            ▶️ 播放（空格）
+          </button>
+        </div>
+      </div>
+
+      <!-- 右侧：任务 + 统计 -->
+      <div class="space-y-3">
+        <div class="bg-white rounded-2xl shadow-xl p-5">
+          <h3 class="font-bold text-gray-800 mb-3">🎤 听辨任务</h3>
+          <p class="text-gray-600 text-sm mb-3" id="expQuestion">请仔细听音频，选择正确词语：</p>
+          <div id="expChoices" class="space-y-2">
+            <button class="choice-btn w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-left font-medium" disabled>A. --</button>
+            <button class="choice-btn w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-left font-medium" disabled>B. --</button>
+            <button class="choice-btn w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-left font-medium" disabled>C. --</button>
+            <button class="choice-btn w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-left font-medium" disabled>D. --</button>
+          </div>
+          <div id="expFeedback" class="mt-3 p-3 rounded-xl text-center hidden">
+            <p id="expFeedbackText" class="font-bold"></p>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-xl p-5">
+          <h3 class="font-bold text-gray-800 mb-3">📊 实时统计</h3>
+          <div class="grid grid-cols-2 gap-2">
+            <div class="bg-blue-50 p-3 rounded-xl text-center">
+              <div class="text-2xl font-bold text-blue-600" id="eStatTrials">0</div>
+              <div class="text-xs text-gray-500">已完成</div>
+            </div>
+            <div class="bg-green-50 p-3 rounded-xl text-center">
+              <div class="text-2xl font-bold text-green-600" id="eStatAcc">--%</div>
+              <div class="text-xs text-gray-500">正确率</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-gradient-to-br from-blue-500 to-purple-600 text-white rounded-2xl p-4">
+          <div class="font-bold" id="expPhaseCard">🏋️ 训练中</div>
+          <div class="text-sm opacity-90 mt-1" id="expFuncCard">功能一 · 抗干扰</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ====== 屏幕5：结果分析 ====== -->
+<div id="screen_results" class="screen">
+  <div class="container mx-auto px-4 py-6 max-w-5xl">
+    <div class="bg-white rounded-2xl shadow-xl p-8">
+      <div class="text-center mb-6">
+        <div class="text-6xl mb-2">🎉</div>
+        <h2 class="text-2xl font-bold text-gray-800">实验完成！</h2>
+        <p class="text-gray-500" id="resSubtitle">被试 S001 · 功能一 · 训练中</p>
+      </div>
+
+      <div class="grid grid-cols-4 gap-3 mb-6">
+        <div class="result-card bg-blue-50 p-4 rounded-xl text-center">
+          <div class="text-3xl font-bold text-blue-600" id="rTotal">0</div>
+          <div class="text-xs text-gray-500 mt-1">总试次</div>
+        </div>
+        <div class="result-card bg-green-50 p-4 rounded-xl text-center">
+          <div class="text-3xl font-bold text-green-600" id="rAcc">0%</div>
+          <div class="text-xs text-gray-500 mt-1">正确率</div>
+        </div>
+        <div class="result-card bg-orange-50 p-4 rounded-xl text-center">
+          <div class="text-3xl font-bold text-orange-600" id="rRT">0ms</div>
+          <div class="text-xs text-gray-500 mt-1">平均反应时</div>
+        </div>
+        <div class="result-card bg-purple-50 p-4 rounded-xl text-center">
+          <div class="text-3xl font-bold text-purple-600" id="rDuration">0min</div>
+          <div class="text-xs text-gray-500 mt-1">实验时长</div>
+        </div>
+      </div>
+
+      <!-- 阈值卡片 -->
+      <div class="mb-6">
+        <h3 class="font-bold text-gray-800 mb-3">📊 阈值计算结果</h3>
+        <div class="bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl p-4 border border-purple-100">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="text-sm text-gray-500" id="rThresholdLabel">噪音阈值</div>
+              <div class="text-3xl font-bold text-purple-600" id="rThreshold">--</div>
+            </div>
+            <div class="text-xs text-gray-400" id="rThresholdDesc">达到80%正确率所需的最低SNR</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 心理物理曲线 -->
+      <div class="mb-6">
+        <h3 class="font-bold text-gray-800 mb-3">📈 心理物理曲线（Sigmoid 拟合）</h3>
+        <div class="bg-white rounded-xl border border-gray-200 p-3">
+          <canvas id="psychCurve" style="width:100%; height:320px; display:block;"></canvas>
+        </div>
+        <p class="text-xs text-gray-400 mt-2" id="psychCurveNote">
+          P(x) = γ + (1-γ-λ) / (1 + e<sup>-β(x-α)</sup>) · γ=猜测率 λ=失误率 α=阈值 β=斜率 · Nelder-Mead MLE
+        </p>
+      </div>
+
+      <!-- 行为详情表 -->
+      <div class="mb-6">
+        <h3 class="font-bold text-gray-800 mb-3">📋 行为数据详情</h3>
+        <div class="overflow-x-auto max-h-64">
+          <table class="w-full text-sm">
+            <thead class="bg-gray-100 sticky top-0">
+              <tr id="resTableHead">
+                <th class="p-2 text-left">试次</th>
+                <th class="p-2 text-left">SNR</th>
+                <th class="p-2 text-left">模糊度</th>
+                <th class="p-2 text-left">SOA</th>
+                <th class="p-2 text-left">条件</th>
+                <th class="p-2 text-left">正确</th>
+                <th class="p-2 text-left">反应时</th>
+                <th class="p-2 text-left">选择</th>
+              </tr>
+            </thead>
+            <tbody id="resTableBody" class="text-xs"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="text-center mt-8 flex justify-center gap-4 flex-wrap">
+        <button onclick="goToMenu()" class="px-8 py-3 bg-blue-500 hover:bg-blue-600 text-white font-bold rounded-xl shadow">🔄 重新开始</button>
+        <button onclick="exportResults()" class="px-8 py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl shadow">📥 保存并导出</button>
+        <button onclick="showHistory()" class="px-8 py-3 bg-gray-500 hover:bg-gray-600 text-white font-bold rounded-xl shadow">📁 历史记录</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ====== 屏幕6：历史记录 ====== -->
+<div id="screen_history" class="screen">
+  <div class="container mx-auto px-4 py-6 max-w-6xl">
+    <div class="bg-white rounded-2xl shadow-xl p-8">
+      <div class="flex items-center justify-between mb-6">
+        <h2 class="text-2xl font-bold text-gray-800">📁 历史记录</h2>
+        <div class="flex gap-3">
+          <button onclick="DataManager.exportToJSON()" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-sm">导出JSON</button>
+          <button onclick="DataManager.exportToCSV()" class="px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 text-sm">导出CSV</button>
+          <button onclick="UIHelper.showScreen('menu')" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-sm">← 返回</button>
+        </div>
+      </div>
+      
+      <div id="historyContent" class="text-center py-8 text-gray-400">
+        暂无历史记录
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- JS模块加载（顺序重要：Config → Core → Utils → Modules → App） -->
+<script src="config/constants.js"></script>
+<script src="js/uiHelper.js"></script>
+<script src="js/core/Staircase.js"></script>
+<script src="js/core/EventLogger.js"></script>
+<script src="js/audioProcessor.js"></script>
+<script src="js/psychometric.js"></script>
+<script src="js/dataManager.js"></script>
+<script src="modules/module1.js"></script>
+<script src="modules/module2.js"></script>
+<script src="modules/module3.js"></script>
+<script src="modules/module4.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
