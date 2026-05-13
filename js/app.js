@@ -38,6 +38,16 @@
     history: []
   };
 
+  // ==================== 顺序/随机状态 ====================
+  const orderState = { snr: 'random', blur: 'random', soa: 'random', att: 'random' };
+
+  /**
+   * 获取当前功能的主要 order 状态
+   */
+  function getCurrentOrder() {
+    return orderState.snr; // 统一取 SNR 的 order 作为主要排序方式
+  }
+
   // ==================== 快速启动（病人界面） ====================
 
   /**
@@ -117,8 +127,17 @@
     selectFunc(funcId);
     selectPhase(STATE.phase);
 
-    // 使用预设的快速配置（减少繁琐设置）
-    applyQuickConfig(funcId, STATE.phase);
+    // ★ 修复：先尝试加载已保存的配置
+    const savedSettings = AdminSettings.getSettings(STATE.subjectId, STATE.phase, funcId);
+    if (savedSettings && savedSettings.settings) {
+      console.log('[QuickStart] 加载已保存的设置', savedSettings);
+      AdminSettings.applySettingsToUI(savedSettings.settings);
+      UIHelper.showNotification('已加载保存的设置', 'info');
+    } else {
+      // 没有保存的配置，使用默认配置
+      console.log('[QuickStart] 没有保存的设置，使用默认配置');
+      applyQuickConfig(funcId, STATE.phase);
+    }
 
     // 生成试次
     try {
@@ -190,7 +209,7 @@
       soaLevels:  getSelectedValues('.soa-lvl'),
       attLevels:  getSelectedValues('.att-lvl'),
       repetitions: parseInt(document.getElementById('snrReps')?.value) || 3,
-      order: 'random'
+      order: getCurrentOrder()
     };
 
     if (funcId === 1) return Module1.generateTrialQueue(config);
@@ -281,9 +300,14 @@
     }
 
     const blurSlider2 = document.getElementById('previewBlurSlider');
-    if (blurSlider2) {
+    const blurText2 = document.getElementById('previewBlurText');
+    if (blurSlider2 && blurText2) {
       blurSlider2.addEventListener('input', function() {
-        // 更新功能2预览视频的模糊度
+        blurText2.textContent = `模糊度: ${blurSlider2.value}%`;
+        updateModule2Preview();
+      });
+    } else if (blurSlider2) {
+      blurSlider2.addEventListener('input', function() {
         updateModule2Preview();
       });
     }
@@ -593,7 +617,21 @@
         }
         
         console.log('[playPreview] 功能4预览，SNR:', snr, '注意:', attCondition, '目标位置:', targetSide, '音频:', previewMat.audio);
-        await AudioProcessor.playMixedAudioFile(previewMat.audio, snr);
+        
+        // ★ 修复：双人条件时播放两个音频
+        if (attCondition === 'dual') {
+          // 为干扰说话人随机选择一个不同的材料
+          let distractorMat;
+          do {
+            distractorMat = Config.MATERIALS[Math.floor(Math.random() * Config.MATERIALS.length)];
+          } while (distractorMat.label === previewMat.label);
+          
+          console.log('[playPreview] 功能4双人模式，目标音频:', previewMat.audio, '干扰音频:', distractorMat.audio);
+          await AudioProcessor.playDualMixedAudioFile(previewMat.audio, distractorMat.audio, snr);
+        } else {
+          // 单人条件只播放目标音频
+          await AudioProcessor.playMixedAudioFile(previewMat.audio, snr);
+        }
         
         if (vL) vL.pause();
         if (vR) vR.pause();
@@ -675,12 +713,16 @@
         soaLevels:  getSelectedValues('.soa-lvl'),
         attLevels:  getSelectedValues('.att-lvl'),
         repetitions: parseInt(document.getElementById('snrReps')?.value) || 3,
-        order: 'random'
+        order: getCurrentOrder()
       };
       
       // ★ 保存管理员设置（按被试、阶段、功能保存）
       AdminSettings.saveSettings(STATE.subjectId, STATE.phase, STATE.func, config);
-      console.log('[Generate] 设置已保存', config);
+
+      // 同步 STATE.snrMode
+      const snrModeEl = document.getElementById('snrMode');
+      if (snrModeEl) STATE.snrMode = snrModeEl.value;
+      console.log('[Generate] 设置已保存', config, 'snrMode:', STATE.snrMode);
 
       let trials = [];
       if (STATE.func === 1) trials = Module1.generateTrialQueue(config);
@@ -707,24 +749,52 @@
     }
   };
 
-  // ==================== 保存管理员设置（不生成试次）====================
+  // ==================== 保存管理员设置并生成试次 ====================
   window.saveAdminSettings = function () {
+    UIHelper.showLoading('正在保存设置并生成试次...');
     try {
+      const snrMode = document.getElementById('snrMode')?.value || 'adaptive';
       const config = {
         snrLevels:  getSelectedValues('.snr-lvl'),
         blurLevels: getSelectedValues('.blur-lvl'),
         soaLevels:  getSelectedValues('.soa-lvl'),
         attLevels:  getSelectedValues('.att-lvl'),
         repetitions: parseInt(document.getElementById('snrReps')?.value) || 3,
-        snrMode:    document.getElementById('snrMode')?.value || 'adaptive',
-        order:      'random'
+        snrMode:    snrMode,
+        order:      getCurrentOrder(),
+        orderState: Object.assign({}, orderState)
       };
+
+      // 同步 STATE.snrMode
+      STATE.snrMode = snrMode;
+
+      // 保存管理员设置
       AdminSettings.saveSettings(STATE.subjectId, STATE.phase, STATE.func, config);
-      UIHelper.showNotification('设置已保存！', 'success');
       console.log('[saveAdminSettings]', STATE.subjectId, STATE.phase, STATE.func, config);
-    } catch (e) {
-      console.error('保存设置失败:', e);
-      UIHelper.showNotification('保存失败: ' + e.message, 'error');
+
+      // 生成试次
+      let trials = [];
+      if (STATE.func === 1) trials = Module1.generateTrialQueue(config);
+      else if (STATE.func === 2) trials = Module2.generateTrialQueue(config);
+      else if (STATE.func === 3) trials = Module3.generateTrialQueue(config);
+      else if (STATE.func === 4) trials = Module4.generateTrialQueue(config);
+
+      STATE.trialQueue = trials;
+      STATE.currentTrialIndex = 0;
+      STATE.results = [];
+
+      if (STATE.snrMode === 'adaptive') initAdaptiveAlgorithm();
+
+      UIHelper.hideLoading();
+      UIHelper.showNotification(`设置已保存，已生成 ${trials.length} 个试次`, 'success');
+      
+      // 跳转到准备完毕界面
+      UIHelper.showScreen('generate');
+      updateGenerateUI(trials.length);
+    } catch(e) {
+      console.error('保存并设置失败:', e);
+      UIHelper.hideLoading();
+      UIHelper.showNotification('操作失败: ' + e.message, 'error');
     }
   };
 
@@ -935,6 +1005,13 @@
   }
 
   async function startNextTrial() {
+    // ★ 修复：清理可能存在的超时计时器
+    if (responseTimeoutId) {
+      clearTimeout(responseTimeoutId);
+      responseTimeoutId = null;
+      console.log('[startNextTrial] 已清理上一个超时计时器');
+    }
+    
     if (STATE.currentTrialIndex >= STATE.trialQueue.length) {
       showResults();
       return;
@@ -945,20 +1022,26 @@
 
       const trial = STATE.trialQueue[STATE.currentTrialIndex];
 
-      // ★ 新增：功能4 试次开始前显示目标位置提示
+      // ★ 修复：功能4 试次开始前显示目标位置提示（每次都显示）
       if (STATE.func === 4 && trial) {
         const side = trial.targetSide || 'left';
         const hintText = `📍 本试次请定位${side === 'left' ? '左侧' : '右侧'}目标说话人的内容`;
         
-        // ★ 修改：使用覆盖层显示在视频上方
+        // 使用覆盖层显示在视频上方
         const overlay = document.getElementById('trialOverlay');
         const overlayText = document.getElementById('trialOverlayText');
         if (overlay && overlayText) {
           overlayText.textContent = hintText;
           overlay.classList.remove('hidden');
+        } else {
+          // 如果覆盖层不存在，使用题目区域显示
+          const q = document.getElementById('expQuestion');
+          if (q) {
+            q.innerHTML = `请定位<strong>${side === 'left' ? '左侧' : '右侧'}</strong>目标说话人的内容：`;
+          }
         }
         
-        // 1.5秒后自动隐藏
+        // 1.5秒后自动隐藏覆盖层
         await new Promise(resolve => setTimeout(resolve, 1500));
         
         if (overlay) overlay.classList.add('hidden');
@@ -1060,7 +1143,8 @@
     }
   }
 
-  // ==================== 播放刺激 ====================
+  // 超时计时器 ID（用于取消超时）
+  let responseTimeoutId = null;
   window.expPlay = async function() {
     // 防重复
     if (STATE.isPlaying) return;
@@ -1085,6 +1169,16 @@
       // ★ 关键修复：立即启用选项按钮，不等待播放完毕
       STATE.isWaitingForResponse = true;
       enableChoiceButtons(true);
+      
+      // ★ 修复：在点点击播放后立即启动超时计时器
+      if (responseTimeoutId) clearTimeout(responseTimeoutId);
+      responseTimeoutId = setTimeout(() => {
+        if (STATE.isWaitingForResponse) {
+          EventLogger.user('timeout', { trial: STATE.currentTrialIndex + 1 });
+          submitAnswer(-1);
+        }
+      }, Config.RESPONSE_TIMEOUT);
+      console.log('[expPlay] 超时计时器已启动，等待', Config.RESPONSE_TIMEOUT, 'ms');
 
       updateExpConditionDisplay(trial);
 
@@ -1116,8 +1210,27 @@
       } else if (STATE.func === 3) {
         await playWithSOA(trial, mat);
       } else if (STATE.func === 4) {
-        // ★ 修改：根据 trial.targetSide 动态设置视频源
+        // ★ 修复：根据 trial.targetSide 动态设置视频源和标签
         const targetSide = trial.targetSide || 'left';
+        
+        // 动态更新视频标签
+        const leftLabel = document.getElementById('expTargetLabel');
+        const rightLabel = document.getElementById('expDistractorLabel');
+        if (leftLabel && rightLabel) {
+          if (targetSide === 'left') {
+            // 目标在左
+            leftLabel.textContent = '👤 目标';
+            leftLabel.className = 'absolute top-1 left-1 bg-blue-600 text-white text-xs px-2 py-0.5 rounded';
+            rightLabel.textContent = '🚫 干扰';
+            rightLabel.className = 'absolute top-1 right-1 bg-red-600 text-white text-xs px-2 py-0.5 rounded';
+          } else {
+            // 目标在右
+            leftLabel.textContent = '🚫 干扰';
+            leftLabel.className = 'absolute top-1 left-1 bg-red-600 text-white text-xs px-2 py-0.5 rounded';
+            rightLabel.textContent = '👤 目标';
+            rightLabel.className = 'absolute top-1 right-1 bg-blue-600 text-white text-xs px-2 py-0.5 rounded';
+          }
+        }
         
         // 更新提示文本
         const expQuestion = document.getElementById('expQuestion');
@@ -1140,6 +1253,12 @@
             const distSrc   = document.getElementById('expDistSrc');
             if (distSrc) distSrc.src = distMat.video;
             if (distVideo) { distVideo.load(); distVideo.currentTime = 0; await distVideo.play(); }
+            
+            // ★ 新增：同时播放目标音频和干扰音频并混音
+            await AudioProcessor.playDualMixedAudioFile(mat.audio, distMat.audio, trial.snr);
+          } else {
+            // 单人模式：只播放目标音频
+            await AudioProcessor.playMixedAudioFile(mat.audio, trial.snr);
           }
         } else {
           // 目标在右：右侧播放目标，左侧播放干扰（如果 dual）
@@ -1155,23 +1274,20 @@
             const distSrc   = document.getElementById('expTargetSrc');
             if (distSrc) distSrc.src = distMat.video;
             if (distVideo) { distVideo.load(); distVideo.currentTime = 0; await distVideo.play(); }
+            
+            // ★ 新增：同时播放目标音频和干扰音频并混音
+            await AudioProcessor.playDualMixedAudioFile(mat.audio, distMat.audio, trial.snr);
+          } else {
+            // 单人模式：只播放目标音频
+            await AudioProcessor.playMixedAudioFile(mat.audio, trial.snr);
           }
         }
-        
-        await AudioProcessor.playMixedAudioFile(mat.audio, trial.snr);
       }
-
+      
       STATE.isPlaying = false;
       updatePlayButton(false);
-
-      // 超时处理
-      setTimeout(() => {
-        if (STATE.isWaitingForResponse) {
-          EventLogger.user('timeout', { trial: STATE.currentTrialIndex + 1 });
-          submitAnswer(-1);
-        }
-      }, Config.RESPONSE_TIMEOUT);
-
+      
+      console.log('[expPlay] 播放完成，等待用户作答...');
     } catch(e) {
       console.error('[expPlay] 播放失败:', e);
       STATE.isPlaying = false;
@@ -1281,8 +1397,18 @@
 
   // ==================== 提交答案 ====================
   function submitAnswer(selectedIndex) {
-    if (!STATE.isWaitingForResponse) return;
-
+    if (!STATE.isWaitingForResponse) {
+      console.warn('[submitAnswer] 当前不在等待响应状态，忽略此次点击');
+      return;
+    }
+    
+    // ★ 修复：取消超时计时器
+    if (responseTimeoutId) {
+      clearTimeout(responseTimeoutId);
+      responseTimeoutId = null;
+      console.log('[submitAnswer] 已取消超时计时器');
+    }
+    
     try {
       STATE.isWaitingForResponse = false;
       const rt    = STATE.responseStartTime ? Date.now() - STATE.responseStartTime : 0;
@@ -1695,9 +1821,47 @@
       .map(v => isNaN(v) ? v : parseInt(v));
   }
 
-  // 兼容旧接口（管理员页面可能调用）
-  window.updateSNRSettings = function() {};
-  window.setOrder = function() {};
+  // 兼容旧接口
+  /**
+   * 切换变量组的随机/顺序模式
+   * @param {string} varType - 'snr' | 'blur' | 'soa' | 'att'
+   * @param {string} mode - 'random' | 'seq'
+   */
+  window.setOrder = function(varType, mode) {
+    orderState[varType] = mode;
+
+    const btnR = document.getElementById(varType + 'OrderR');
+    const btnS = document.getElementById(varType + 'OrderS');
+    if (btnR && btnS) {
+      const colorMap = { snr: 'blue', blur: 'purple', soa: 'orange', att: 'green' };
+      const c = colorMap[varType] || 'blue';
+      if (mode === 'random') {
+        btnR.className = 'px-2 py-0.5 rounded bg-' + c + '-200 font-medium';
+        btnS.className = 'px-2 py-0.5 rounded bg-gray-100';
+      } else {
+        btnR.className = 'px-2 py-0.5 rounded bg-gray-100';
+        btnS.className = 'px-2 py-0.5 rounded bg-' + c + '-200 font-medium';
+      }
+    }
+    console.log('[setOrder]', varType, '→', mode);
+  };
+
+  /**
+   * SNR 模式切换回调（自适应/固定阈值/组合遍历）
+   */
+  window.updateSNRSettings = function() {
+    const modeEl = document.getElementById('snrMode');
+    const adaptiveInfo = document.getElementById('adaptiveInfo');
+    if (!modeEl) return;
+    const mode = modeEl.value;
+    // 显示/隐藏自适应算法说明
+    if (adaptiveInfo) {
+      adaptiveInfo.style.display = (mode === 'adaptive') ? 'block' : 'none';
+    }
+    // 同步 STATE
+    STATE.snrMode = mode;
+    console.log('[updateSNRSettings] snrMode →', mode);
+  };
 
   console.log('app.js v3.1 加载完成');
 })();

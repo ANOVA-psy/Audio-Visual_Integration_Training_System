@@ -71,13 +71,13 @@ const AdminSettings = (function () {
     return {
       func: func,
       phase: phase,
-      snrLevels:  [6, 3, 0, -3, -6, -9, -12],
+      snrLevels:  [12, 9, 6, 3, 0, -3, -6, -9, -12, -18],
       blurLevels: [0, 10, 20, 30, 40, 50, 60],
       soaLevels:  [-300, -200, -100, 0, 100, 200, 300],
       attLevels:  ['single', 'dual'],
       repetitions: reps,
       snrMode: 'adaptive',
-      order: 'random'
+      orderState: { snr: 'random', blur: 'random', soa: 'random', att: 'random' }
     };
   }
 
@@ -127,6 +127,32 @@ const AdminSettings = (function () {
     // SNR 模式
     var modeEl = document.getElementById('snrMode');
     if (modeEl && s.snrMode) modeEl.value = s.snrMode;
+
+    // 顺序/随机 按钮状态恢复
+    var orders = s.orderState || s.order || {};
+    var varTypes = ['snr', 'blur', 'soa', 'att'];
+    var colorMap = { snr:'blue', blur:'purple', soa:'orange', att:'green' };
+    varTypes.forEach(function(vt) {
+      var mode = (typeof orders === 'string') ? orders : (orders[vt] || 'random');
+      // 触发 setOrder 恢复按钮视觉（如果 setOrder 已定义）
+      if (typeof window.setOrder === 'function' && window.setOrder.toString().indexOf('function() {}') === -1) {
+        window.setOrder(vt, mode);
+      } else {
+        // setOrder 尚未实现，手动恢复按钮样式
+        var btnR = document.getElementById(vt + 'OrderR');
+        var btnS = document.getElementById(vt + 'OrderS');
+        if (btnR && btnS) {
+          var c = colorMap[vt] || 'blue';
+          if (mode === 'random') {
+            btnR.className = 'px-2 py-0.5 rounded bg-' + c + '-200 font-medium';
+            btnS.className = 'px-2 py-0.5 rounded bg-gray-100';
+          } else {
+            btnR.className = 'px-2 py-0.5 rounded bg-gray-100';
+            btnS.className = 'px-2 py-0.5 rounded bg-' + c + '-200 font-medium';
+          }
+        }
+      }
+    });
   }
 
   // ==================== 公共 API ====================

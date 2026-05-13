@@ -63,10 +63,10 @@ const Config = (function () {
 
   // ==================== 功能一：SNR 档位 ====================
   /** @type {number[]} 全部可选 SNR 级别（dB）- 从容易到难（从大到小） */
-  const SNR_ALL = [9, 6, 3, 0, -3, -6, -9, -12, -18];
+  const SNR_ALL = [12, 9, 6, 3, 0, -3, -6, -9, -12, -18];
 
   /** @type {number[]} 默认启用的 SNR 级别（dB）- 从容易到难 */
-  const SNR_DEFAULT = [6, 3, 0, -3, -6, -9, -12];
+  const SNR_DEFAULT = [12, 9, 6, 3, 0, -3, -6, -9, -12];
 
   /** @type {number} SNR 步进值（自适应算法用） */
   const SNR_STEP = 3;
@@ -134,8 +134,8 @@ const Config = (function () {
   /** @type {number} 每个条件默认重复次数 */
   const DEFAULT_REPETITIONS = 3;
 
-  /** @type {number} 反应超时时间（ms） */
-  const RESPONSE_TIMEOUT = 10000;
+  /** @type {number} 反应超时时间（ms）- 从音频播放完成后开始计时 */
+  const RESPONSE_TIMEOUT = 15000;
 
   /**
    * 试次间间隔（ms）

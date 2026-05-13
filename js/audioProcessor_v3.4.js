@@ -404,6 +404,52 @@ const AudioProcessor = (function () {
     return playMixedAudio(null, snr, audioFilePath);
   }
 
+  /**
+   * ★ 新增：同时播放两个音频文件并混音（用于双人模式）
+   * @param {string} audioFile1 - 目标音频路径
+   * @param {string} audioFile2 - 干扰音频路径
+   * @param {number} snr - 信噪比
+   */
+  async function playDualMixedAudioFile(audioFile1, audioFile2, snr) {
+    try {
+      console.log('[Audio] ========== 开始双人混音播放 ==========');
+      console.log('[Audio] 参数:', { audioFile1, audioFile2, snr });
+      
+      isPlaying = true;
+      
+      console.log('[Audio] 1. 初始化音频上下文...');
+      await initAudioContext();
+      
+      console.log('[Audio] 2. 加载噪音...');
+      await loadNoise();
+      
+      console.log('[Audio] 3. 启动噪音 (SNR:', snr, 'dB)...');
+      startNoise();
+      
+      console.log('[Audio] 4. 设置噪音电平...');
+      setNoiseLevel(snr);
+      
+      // 同时播放两个音频文件
+      console.log('[Audio] 5. 同时播放两个音频文件...');
+      const play1 = playTaskAudioFile(audioFile1);
+      const play2 = playTaskAudioFile(audioFile2);
+      
+      await Promise.all([play1, play2]);
+      console.log('[Audio] ✓ 两个音频文件播放完毕');
+      
+      console.log('[Audio] 6. 淡出并停止噪音...');
+      fadeOutAndStopNoise();
+      
+      console.log('[Audio] ========== 双人混音播放完成 ==========');
+      isPlaying = false;
+    } catch (error) {
+      console.error('[Audio] ✗ 双人混音音频播放失败:', error);
+      fadeOutAndStopNoise();
+      isPlaying = false;
+      throw error;
+    }
+  }
+
   // ==================== 公共 API ===================
   return {
     initAudioContext,
@@ -412,6 +458,7 @@ const AudioProcessor = (function () {
     stopAllAudio,
     playMixedAudio,
     playMixedAudioFile,
+    playDualMixedAudioFile,  // 新增：双人混音
     playMixedAudioAt,
     playPreviewMixed,
     playTaskAudio,

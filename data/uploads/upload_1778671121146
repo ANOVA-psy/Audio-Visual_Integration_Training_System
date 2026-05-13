@@ -1,0 +1,23 @@
+------WebKitFormBoundarywzeBMcz3zYR9KmLq
+Content-Disposition: form-data; name="file"; filename="P001_pre_func1_mp3xddn4zpthu5gf0u.json"
+Content-Type: application/json
+
+{
+  "id": "mp3xddn4zpthu5gf0u",
+  "timestamp": "2026-05-13T10:36:58.576Z",
+  "metadata": {
+    "subjectId": "P001",
+    "date": "2026-05-13",
+    "phase": "pre",
+    "func": 1,
+    "snrMode": "adaptive",
+    "threshold": null,
+    "totalTrials": 0,
+    "accuracy": 0,
+    "avgRT": 0
+  },
+  "psychometricFit": null,
+  "rawEventLog": null,
+  "results": []
+}
+------WebKitFormBoundarywzeBMcz3zYR9KmLq--

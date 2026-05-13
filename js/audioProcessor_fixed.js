@@ -1,10 +1,11 @@
 /**
- * @fileoverview 音频处理模块 v3.2 — 修复音频播放问题
+ * @fileoverview 音频处理模块 v3.4 — 彻底修复信号音无法播放问题
  * 
- * 修复要点：
- * 1. playTaskAudioFile() 现在正确等待音频播放完毕后再 resolve Promise
- * 2. 简化了事件处理逻辑，去掉了有问题的 eventTriggered 标志
- * 3. 添加了更多错误日志，帮助定位问题
+ * 核心修改：
+ * 1. 信号音直接通过 &lt;audio&gt; 元素播放（不经过 Web Audio）
+ * 2. 噪音继续通过 Web Audio 播放
+ * 3. 两者同时播放，确保信号音能听到
+ * 4. 添加了详细调试日志
  */
 
 const AudioProcessor = (function () {
@@ -15,14 +16,8 @@ const AudioProcessor = (function () {
   let noiseBuffer = null;
   let noiseSource = null;
   let noiseGainNode = null;
-  let taskSource = null;
-  let signalGainNode = null;
-  let taskAudioElement = null;
-  let taskAudioSourceNode = null;
   let masterGainNode = null;
   let isPlaying = false;
-  let isNoiseStarted = false;
-  const audioCache = new Map();
 
   // ==================== 初始化 ===================
   
@@ -34,13 +29,12 @@ const AudioProcessor = (function () {
       masterGainNode.gain.value = 1.0;
       masterGainNode.connect(audioContext.destination);
       
-      signalGainNode = audioContext.createGain();
-      signalGainNode.gain.value = Config.SIGNAL_GAIN != null ? Config.SIGNAL_GAIN : 0.5;
-      signalGainNode.connect(masterGainNode);
+      console.log('[Audio] AudioContext 已初始化');
     }
     
     if (audioContext.state === 'suspended') {
       await audioContext.resume();
+      console.log('[Audio] AudioContext 已恢复, 状态:', audioContext.state);
     }
     
     return audioContext;
@@ -62,9 +56,8 @@ const AudioProcessor = (function () {
       
       if (response.ok) {
         const arrayBuffer = await response.arrayBuffer();
-        console.log('[Audio] 噪音文件大小:', arrayBuffer.byteLength, 'bytes');
         noiseBuffer = await audioContext.decodeAudioData(arrayBuffer);
-        console.log('[Audio] ✓ 噪音文件加载成功并解码');
+        console.log('[Audio] ✓ 噪音文件加载成功');
         return noiseBuffer;
       } else {
         console.error('[Audio] ✗ 噪音文件 HTTP 错误:', response.status);
@@ -113,7 +106,7 @@ const AudioProcessor = (function () {
     noiseGainNode.connect(masterGainNode);
     
     noiseSource.start();
-    isNoiseStarted = true;
+    console.log('[Audio] ✓ 噪音已启动');
   }
   
   function stopNoiseSource() {
@@ -126,37 +119,32 @@ const AudioProcessor = (function () {
       noiseGainNode.disconnect();
       noiseGainNode = null;
     }
-    isNoiseStarted = false;
   }
   
-  function setNoiseLevel(snr, signalGainValue) {
+  function setNoiseLevel(snr) {
     if (!noiseGainNode) {
       console.error('[Audio] ✗ noiseGainNode 未初始化');
       return;
     }
     
-    const sigGain = signalGainValue || Config.SIGNAL_GAIN;
+    const sigGain = Config.SIGNAL_GAIN;
     const noiseGainValue = sigGain * Math.pow(10, -snr / 20);
     const clamped = Math.min(noiseGainValue, sigGain * Config.NOISE_GAIN_CLAMP);
     
     console.log('[Audio] 设置噪音电平:', {
       snr: snr,
       signalGain: sigGain,
-      calculatedNoiseGain: noiseGainValue,
-      clampedNoiseGain: clamped,
-      NOISE_GAIN_CLAMP: Config.NOISE_GAIN_CLAMP
+      noiseGain: clamped
     });
     
     const now = audioContext.currentTime;
     noiseGainNode.gain.cancelScheduledValues(now);
     noiseGainNode.gain.setValueAtTime(noiseGainNode.gain.value, now);
     noiseGainNode.gain.exponentialRampToValueAtTime(Math.max(0.0001, clamped), now + 0.02);
-    
-    console.log('[Audio] 噪音增益已设置:', noiseGainNode.gain.value);
   }
   
   function fadeOutAndStopNoise() {
-    if (noiseGainNode && isNoiseStarted) {
+    if (noiseGainNode) {
       const now = audioContext.currentTime;
       noiseGainNode.gain.cancelScheduledValues(now);
       noiseGainNode.gain.setTargetAtTime(0, now, Config.NOISE_FADE_TIME);
@@ -164,14 +152,13 @@ const AudioProcessor = (function () {
       setTimeout(() => {
         stopNoiseSource();
       }, Config.NOISE_STOP_DELAY);
+      
+      console.log('[Audio] 噪音淡出中...');
     }
   }
 
-  // ==================== 任务音频 ===================
+  // ==================== 任务音频（不使用 Web Audio）====================
   
-  /**
-   * 通过语音合成播放文本
-   */
   function playTaskAudio(text) {
     return new Promise(function (resolve, reject) {
       if (!('speechSynthesis' in window)) {
@@ -206,9 +193,8 @@ const AudioProcessor = (function () {
   }
 
   /**
-   * ★ 修复版：播放任务音频文件
-   * 每次创建新的 &lt;audio&gt; 元素以避免事件冲突
-   * 确保音频能正常播放并被听到
+   * ★ 修复版：直接通过 &lt;audio&gt; 元素播放，不经过 Web Audio
+   * 这样可以确保信号音一定能听到
    */
   function playTaskAudioFile(audioPath) {
     return new Promise(function (resolve, reject) {
@@ -216,20 +202,11 @@ const AudioProcessor = (function () {
         console.log('[Audio] [playTaskAudioFile] ========== 开始 ==========');
         console.log('[Audio] [playTaskAudioFile] 音频路径:', audioPath);
         
-        // 每次创建新的 audio 元素（避免事件冲突）
-        console.log('[Audio] [playTaskAudioFile] 创建新的 &lt;audio&gt; 元素');
+        // 创建 &lt;audio&gt; 元素
+        console.log('[Audio] [playTaskAudioFile] 创建 &lt;audio&gt; 元素');
         const audioElement = document.createElement('audio');
         audioElement.style.display = 'none';
-        if (window.location.protocol !== 'file:') {
-          audioElement.crossOrigin = 'anonymous';
-        }
         document.body.appendChild(audioElement);
-        
-        // 创建 MediaElementSource 并连接到 signalGainNode
-        console.log('[Audio] [playTaskAudioFile] 创建 MediaElementSource...');
-        const sourceNode = audioContext.createMediaElementSource(audioElement);
-        sourceNode.connect(signalGainNode);
-        console.log('[Audio] [playTaskAudioFile] ✓ 已连接到 signalGainNode, signalGain =', signalGainNode.gain.value);
         
         let resolved = false;
         
@@ -240,7 +217,6 @@ const AudioProcessor = (function () {
             // 清理
             try {
               audioElement.pause();
-              sourceNode.disconnect();
               document.body.removeChild(audioElement);
             } catch (e) {}
             resolve();
@@ -253,7 +229,6 @@ const AudioProcessor = (function () {
             console.error('[Audio] [playTaskAudioFile] ✗ Promise reject:', err);
             try {
               audioElement.pause();
-              sourceNode.disconnect();
               document.body.removeChild(audioElement);
             } catch (e) {}
             reject(err);
@@ -265,10 +240,7 @@ const AudioProcessor = (function () {
           const err = audioElement.error;
           console.error('[Audio] [playTaskAudioFile] ✗ 音频加载失败:', {
             code: err ? err.code : 'unknown',
-            message: err ? err.message : 'unknown',
-            readyState: audioElement.readyState,
-            networkState: audioElement.networkState,
-            currentSrc: audioElement.currentSrc
+            message: err ? err.message : 'unknown'
           });
           doReject(new Error('音频加载失败: ' + (err ? err.message : '未知错误')));
         };
@@ -279,8 +251,7 @@ const AudioProcessor = (function () {
           console.log('[Audio] [playTaskAudioFile] 调用 play()...');
           
           audioElement.play().then(function() {
-            console.log('[Audio] [playTaskAudioFile] ✓ play() Promise 已解决 (音频正在播放)');
-            console.log('[Audio] [playTaskAudioFile] paused =', audioElement.paused, ', currentTime =', audioElement.currentTime);
+            console.log('[Audio] [playTaskAudioFile] ✓ play() 成功，音频正在播放');
           }).catch(function(err) {
             console.error('[Audio] [playTaskAudioFile] ✗ play() 失败:', err);
             doReject(err);
@@ -331,12 +302,11 @@ const AudioProcessor = (function () {
       
       console.log('[Audio] 3. 启动噪音 (SNR:', snr, 'dB)...');
       startNoise();
-      console.log('[Audio] 噪音已启动, isNoiseStarted:', isNoiseStarted);
       
       console.log('[Audio] 4. 设置噪音电平...');
-      setNoiseLevel(snr, Config.SIGNAL_GAIN);
+      setNoiseLevel(snr);
       
-      console.log('[Audio] 5. 播放任务音频...');
+      console.log('[Audio] 5. 播放任务音频（直接通过 &lt;audio&gt; 元素）...');
       if (taskAudioPath) {
         console.log('[Audio] 使用文件路径:', taskAudioPath);
         await playTaskAudioFile(taskAudioPath);
@@ -368,7 +338,7 @@ const AudioProcessor = (function () {
       await loadNoise();
       
       startNoise();
-      setNoiseLevel(snr, Config.SIGNAL_GAIN);
+      setNoiseLevel(snr);
       
       if (delayMs > 0) {
         await new Promise(function(resolve) { setTimeout(resolve, delayMs); });
@@ -394,7 +364,7 @@ const AudioProcessor = (function () {
       await loadNoise();
       
       startNoise();
-      setNoiseLevel(snr, Config.SIGNAL_GAIN);
+      setNoiseLevel(snr);
       
       await playTaskAudio('测试');
       
@@ -412,22 +382,12 @@ const AudioProcessor = (function () {
   function stopAllAudio() {
     fadeOutAndStopNoise();
     
-    if (taskAudioElement) {
-      taskAudioElement.pause();
-      taskAudioElement.currentTime = 0;
-    }
-    
-    if (taskSource) {
-      try { taskSource.stop(); } catch (e) {}
-      taskSource.disconnect();
-      taskSource = null;
-    }
-    
     if ('speechSynthesis' in window) {
       speechSynthesis.cancel();
     }
     
     isPlaying = false;
+    console.log('[Audio] 所有音频已停止');
   }
 
   // ==================== 查询接口 ===================
@@ -444,6 +404,52 @@ const AudioProcessor = (function () {
     return playMixedAudio(null, snr, audioFilePath);
   }
 
+  /**
+   * ★ 新增：同时播放两个音频文件并混音（用于双人模式）
+   * @param {string} audioFile1 - 目标音频路径
+   * @param {string} audioFile2 - 干扰音频路径
+   * @param {number} snr - 信噪比
+   */
+  async function playDualMixedAudioFile(audioFile1, audioFile2, snr) {
+    try {
+      console.log('[Audio] ========== 开始双人混音播放 ==========');
+      console.log('[Audio] 参数:', { audioFile1, audioFile2, snr });
+      
+      isPlaying = true;
+      
+      console.log('[Audio] 1. 初始化音频上下文...');
+      await initAudioContext();
+      
+      console.log('[Audio] 2. 加载噪音...');
+      await loadNoise();
+      
+      console.log('[Audio] 3. 启动噪音 (SNR:', snr, 'dB)...');
+      startNoise();
+      
+      console.log('[Audio] 4. 设置噪音电平...');
+      setNoiseLevel(snr);
+      
+      // 同时播放两个音频文件
+      console.log('[Audio] 5. 同时播放两个音频文件...');
+      const play1 = playTaskAudioFile(audioFile1);
+      const play2 = playTaskAudioFile(audioFile2);
+      
+      await Promise.all([play1, play2]);
+      console.log('[Audio] ✓ 两个音频文件播放完毕');
+      
+      console.log('[Audio] 6. 淡出并停止噪音...');
+      fadeOutAndStopNoise();
+      
+      console.log('[Audio] ========== 双人混音播放完成 ==========');
+      isPlaying = false;
+    } catch (error) {
+      console.error('[Audio] ✗ 双人混音音频播放失败:', error);
+      fadeOutAndStopNoise();
+      isPlaying = false;
+      throw error;
+    }
+  }
+
   // ==================== 公共 API ===================
   return {
     initAudioContext,
@@ -452,6 +458,7 @@ const AudioProcessor = (function () {
     stopAllAudio,
     playMixedAudio,
     playMixedAudioFile,
+    playDualMixedAudioFile,  // 新增：双人混音
     playMixedAudioAt,
     playPreviewMixed,
     playTaskAudio,

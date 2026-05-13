@@ -1,0 +1,17 @@
+{
+  "name": "audio-visual-training-system",
+  "version": "3.0.0",
+  "description": "视听语音整合训练系统 v3 - 实验平台",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": ["experiment", "training", "audio-visual"],
+  "author": "西格 (Sig)",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5"
+  }
+}
