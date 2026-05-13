@@ -3,43 +3,239 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>视听语音整合训练系统 - v3.0</title>
+  <title>视听语音整合训练系统</title>
+  <!-- 
+    Tailwind CSS CDN 模式（开发阶段）
+    注意：控制台会显示 "cdn.tailwindcss.com should not be used in production" 警告
+    这是正常提示，不影响功能。生产部署时请使用 Tailwind CLI 本地构建。
+  -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
       theme: {
         extend: {
           colors: {
-            primary: '#3b82f6',
-            secondary: '#8b5cf6',
-            success: '#10b981',
-            warning: '#f59e0b',
-            danger: '#ef4444',
-            cyan: '#06b6d4',
-            pink: '#ec4899'
+            primary: '#2563eb',
+            secondary: '#7c3aed',
+            success: '#059669',
+            warning: '#d97706',
+            danger: '#dc2626',
+          },
+          fontSize: {
+            'patient': ['1.25rem', { lineHeight: '1.8' }],
+            'patient-lg': ['1.5rem', { lineHeight: '2' }],
           }
         }
       }
     }
   </script>
   <link rel="stylesheet" href="css/style.css">
+  <style>
+    /* 全局字体放大，适配老人/病人 */
+    body { font-size: 17px; }
+    .patient-btn {
+      min-height: 3.5rem;
+      font-size: 1.2rem;
+      font-weight: 700;
+      border-radius: 1rem;
+      transition: all .15s;
+      cursor: pointer;
+    }
+    .patient-btn:active { transform: scale(.97); }
+    .choice-btn {
+      transition: background .1s, border-color .1s;
+    }
+    .choice-btn:not(:disabled):hover {
+      background: #eff6ff;
+      border-color: #3b82f6;
+    }
+    .choice-btn.correct  { background:#d1fae5; border-color:#059669; color:#065f46; }
+    .choice-btn.wrong    { background:#fee2e2; border-color:#dc2626; color:#991b1b; }
+    /* 阶段卡片颜色 */
+    .phase-card-pre   { border-color:#6366f1; }
+    .phase-card-pre.active   { background:#eef2ff; border-color:#6366f1; }
+    .phase-card-train { border-color:#2563eb; }
+    .phase-card-train.active { background:#eff6ff; border-color:#2563eb; }
+    .phase-card-post  { border-color:#059669; }
+    .phase-card-post.active  { background:#ecfdf5; border-color:#059669; }
+    /* 呼吸提示动画 */
+    @keyframes pulse-ring {
+      0%   { box-shadow: 0 0 0 0 rgba(37,99,235,.4); }
+      70%  { box-shadow: 0 0 0 18px rgba(37,99,235,0); }
+      100% { box-shadow: 0 0 0 0 rgba(37,99,235,0); }
+    }
+    .play-pulse { animation: pulse-ring 1.5s infinite; }
+    /* 步骤指示 */
+    .step-dot {
+      width:2rem; height:2rem;
+      border-radius:50%;
+      display:flex; align-items:center; justify-content:center;
+      font-size:.9rem; font-weight:700;
+      flex-shrink:0;
+    }
+    .step-active  { background:#2563eb; color:#fff; }
+    .step-done    { background:#059669; color:#fff; }
+    .step-pending { background:#e5e7eb; color:#6b7280; }
+    /* 屏幕过渡 */
+    .screen { display:none; }
+    .screen.active { display:block; }
+    
+    /* ★ 新增：试次覆盖层样式 */
+    #trialOverlay {
+      transition: opacity 0.3s ease;
+    }
+    #trialOverlay.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+    #trialOverlay:not(.hidden) {
+      opacity: 1;
+    }
+    
+    /* ★ 新增：播放提示样式 */
+    #expQuestion.text-blue-500 {
+      font-size: 1.25rem;
+      font-weight: 600;
+    }
+  </style>
 </head>
-<body class="bg-gray-100 min-h-screen">
+<body class="bg-slate-100 min-h-screen">
 
-<!-- ====== 屏幕1：主菜单 ====== -->
-<div id="screen_menu" class="screen active">
+<!-- ================================================================
+  屏幕 A：快速开始（面向病人/用户）
+================================================================ -->
+<div id="screen_quick" class="screen active">
+  <div class="container mx-auto px-4 py-8 max-w-2xl">
+
+    <!-- 页眉 -->
+    <div class="text-center mb-8">
+      <div class="text-5xl mb-3">🎧</div>
+      <h1 class="text-3xl font-bold text-gray-800 mb-1">视听语音训练</h1>
+      <p class="text-gray-500">请在工作人员协助下完成本次训练</p>
+    </div>
+
+    <!-- 被试号 -->
+    <div class="bg-white rounded-2xl shadow p-5 mb-5">
+      <label class="block text-gray-600 font-semibold mb-2 text-lg">👤 您的编号</label>
+      <input type="text" id="quickSubjectId" placeholder="请输入编号（如：P001）" value="P001"
+        class="w-full px-5 py-4 border-2 border-gray-200 rounded-xl text-xl focus:border-primary focus:outline-none">
+    </div>
+
+    <!-- 三阶段快速选择 -->
+    <div class="bg-white rounded-2xl shadow p-5 mb-5">
+      <div class="font-semibold text-gray-700 text-lg mb-4">📋 请选择本次训练阶段</div>
+
+      <button onclick="quickStart('pre')" id="qBtn_pre"
+        class="w-full mb-3 p-5 rounded-2xl border-3 border-2 border-indigo-300 text-left flex items-center gap-4 hover:bg-indigo-50 transition-all patient-btn">
+        <div class="text-4xl">📊</div>
+        <div>
+          <div class="text-xl font-bold text-indigo-700">训练前测试</div>
+          <div class="text-sm text-gray-500 font-normal mt-0.5">了解您的听觉基础能力</div>
+        </div>
+        <div class="ml-auto text-2xl">›</div>
+      </button>
+
+      <button onclick="quickStart('train')" id="qBtn_train"
+        class="w-full mb-3 p-5 rounded-2xl border-2 border-blue-400 bg-blue-50 text-left flex items-center gap-4 hover:bg-blue-100 transition-all patient-btn">
+        <div class="text-4xl">🏋️</div>
+        <div>
+          <div class="text-xl font-bold text-blue-700">训练阶段</div>
+          <div class="text-sm text-gray-500 font-normal mt-0.5">反复练习，提升听觉能力</div>
+        </div>
+        <div class="ml-auto text-2xl">›</div>
+      </button>
+
+      <button onclick="quickStart('post')" id="qBtn_post"
+        class="w-full p-5 rounded-2xl border-2 border-green-300 text-left flex items-center gap-4 hover:bg-green-50 transition-all patient-btn">
+        <div class="text-4xl">📈</div>
+        <div>
+          <div class="text-xl font-bold text-green-700">训练后测试</div>
+          <div class="text-sm text-gray-500 font-normal mt-0.5">检验您的训练成果</div>
+        </div>
+        <div class="ml-auto text-2xl">›</div>
+      </button>
+    </div>
+
+    <!-- 底部管理员入口 -->
+    <div class="text-center">
+      <a href="admin.html" 
+        class="text-sm text-gray-400 hover:text-gray-600 underline">
+        ⚙️ 管理员 / 研究员设置
+      </a>
+      <a href="history.html"
+        class="ml-4 text-sm text-gray-400 hover:text-gray-600 underline">
+        📁 历史记录
+      </a>
+    </div>
+  </div>
+</div>
+
+
+<!-- ================================================================
+  屏幕 B：阶段引导（快速说明 + 选择训练模块）
+================================================================ -->
+<div id="screen_guide" class="screen">
+  <div class="container mx-auto px-4 py-8 max-w-2xl">
+
+    <!-- 阶段标题 -->
+    <div id="guideHeader" class="text-center mb-6">
+      <div class="text-5xl mb-2" id="guideEmoji">🏋️</div>
+      <h2 class="text-2xl font-bold text-gray-800" id="guideTitle">训练阶段</h2>
+      <p class="text-gray-500 mt-1" id="guideDesc">提高视听整合能力</p>
+    </div>
+
+    <!-- 操作说明卡片 -->
+    <div class="bg-blue-50 rounded-2xl p-5 mb-5 border border-blue-200">
+      <div class="font-bold text-blue-800 mb-3 text-lg">📖 操作说明</div>
+      <div class="space-y-3" id="guideInstructions">
+        <div class="flex items-start gap-3">
+          <div class="step-dot step-active">1</div>
+          <div class="text-gray-700">点击 <strong>▶️ 播放</strong> 按钮（或按空格键）收听内容</div>
+        </div>
+        <div class="flex items-start gap-3">
+          <div class="step-dot step-pending">2</div>
+          <div class="text-gray-700">从右侧 <strong>四个选项</strong> 中选出您听到的内容</div>
+        </div>
+        <div class="flex items-start gap-3">
+          <div class="step-dot step-pending">3</div>
+          <div class="text-gray-700">系统会立即告诉您答案是否正确，然后自动进入下一题</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 训练模块选择 -->
+    <div class="bg-white rounded-2xl shadow p-5 mb-5">
+      <div class="font-semibold text-gray-700 text-lg mb-3">🎯 选择训练内容</div>
+      <div id="moduleGuideArea" class="space-y-3">
+        <!-- 由JS动态生成 -->
+      </div>
+    </div>
+
+    <!-- 返回 -->
+    <button onclick="UIHelper.showScreen('quick')"
+      class="w-full py-4 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold rounded-xl text-lg">
+      ← 返回
+    </button>
+  </div>
+</div>
+
+
+<!-- ================================================================
+  屏幕1：管理员主菜单（原有，保留完整）
+================================================================ -->
+<div id="screen_menu" class="screen">
   <div class="container mx-auto px-4 py-8 max-w-5xl">
     <div class="bg-white rounded-2xl shadow-xl p-8">
-      <div class="text-center mb-8">
-        <h1 class="text-3xl font-bold text-gray-800 mb-1">🎧 视听语音整合训练系统</h1>
-        <p class="text-gray-500 text-sm">v3.0 · 心理物理法 · 自适应阈值 · 训练+测试双板块</p>
+      <div class="text-center mb-6">
+        <h1 class="text-2xl font-bold text-gray-800 mb-1">⚙️ 管理员设置</h1>
+        <p class="text-gray-400 text-sm">v3.0 · 完整实验配置</p>
       </div>
 
       <!-- 被试信息 -->
       <div class="grid grid-cols-2 gap-4 mb-6">
         <div>
           <label class="block text-sm font-medium text-gray-600 mb-1">被试编号</label>
-          <input type="text" id="subjectId" placeholder="例：S001" value="S001"
+          <input type="text" id="subjectId" placeholder="例：S001" value="P001"
             class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary focus:outline-none text-lg">
         </div>
         <div>
@@ -104,7 +300,7 @@
 
       <!-- 配置摘要 -->
       <div id="configSummary" class="p-4 bg-blue-50 rounded-xl mb-6 text-sm text-blue-700">
-        📋 当前配置：<span id="cfgText">功能一 | 训练中 | 被试 S001</span>
+        📋 当前配置：<span id="cfgText">功能一 | 训练中 | 被试 P001</span>
       </div>
 
       <!-- 操作按钮 -->
@@ -112,15 +308,21 @@
         <button onclick="goToPreparation()" class="px-8 py-4 bg-primary hover:bg-blue-600 text-white text-xl font-bold rounded-xl shadow-lg transition-all">
           ⚙️ 进入材料准备
         </button>
-        <button onclick="showHistory()" class="px-8 py-4 bg-gray-500 hover:bg-gray-600 text-white text-xl font-bold rounded-xl shadow-lg transition-all">
+        <a href="history.html" class="inline-block px-8 py-4 bg-gray-500 hover:bg-gray-600 text-white text-xl font-bold rounded-xl shadow-lg transition-all text-center">
           📁 历史记录
-        </button>
+        </a>
+      </div>
+      <div class="text-center mt-4">
+        <button onclick="UIHelper.showScreen('quick')" class="text-sm text-gray-400 underline hover:text-gray-600">← 返回快速开始</button>
       </div>
     </div>
   </div>
 </div>
 
-<!-- ====== 屏幕2：材料准备 ====== -->
+
+<!-- ================================================================
+  屏幕2：材料准备
+================================================================ -->
 <div id="screen_prep" class="screen">
   <div class="container mx-auto px-4 py-6 max-w-6xl">
     <div class="flex items-center justify-between mb-6">
@@ -241,12 +443,10 @@
           </div>
         </div>
 
-        <!-- 试次预览 -->
+        <!-- 试次统计 -->
         <div class="mt-4 p-3 bg-gray-100 rounded-xl text-sm">
-          <div class="font-medium text-gray-700 mb-2">📋 试次统计 <span id="previewTotal" class="text-primary font-bold">0</span> 个试次</div>
-          <div id="trialPreview" class="text-xs text-gray-500 max-h-32 overflow-y-auto space-y-1">
-            <!-- 动态生成 -->
-          </div>
+          <div class="font-medium text-gray-700 mb-1">📋 试次统计：<span id="previewTotal" class="text-primary font-bold">0</span> 个试次</div>
+          <div id="summaryText" class="text-xs text-gray-500">请检查上方设置</div>
         </div>
       </div>
 
@@ -256,108 +456,139 @@
         <div class="bg-white rounded-2xl shadow-xl p-6">
           <h3 class="font-bold text-gray-800 mb-3 flex items-center gap-2"><span>👁️</span> 材料预览</h3>
 
-          <!-- 功能1预览：纯音频 -->
+          <!-- 功能1预览 -->
           <div id="preview1" class="text-center py-6">
             <div class="text-6xl mb-3">🔊</div>
             <div class="text-gray-500 text-sm">功能一：纯音频 + 噪音（无视频）</div>
-            <div class="mt-4 p-3 bg-blue-50 rounded-lg text-xs text-blue-600">
-              预览不同SNR的噪音混合效果
-            </div>
+            <div class="mt-4 p-3 bg-blue-50 rounded-lg text-xs text-blue-600">预览不同SNR的噪音混合效果</div>
             <input type="range" id="previewSNRSlider" min="-12" max="6" step="3" value="0" class="w-full mt-3">
             <div class="flex justify-between text-xs text-gray-400 mt-1">
               <span>-12dB</span><span>-6</span><span>0</span><span>+3</span><span>+6dB</span>
             </div>
             <div class="mt-2 text-lg font-bold text-blue-600" id="previewSNRText">SNR: 0 dB</div>
-            <button onclick="playPreview()" class="mt-3 px-6 py-2 bg-primary text-white rounded-lg text-sm hover:bg-blue-600">
-              ▶️ 播放预览
-            </button>
+            <button onclick="playPreview()" class="mt-3 px-6 py-2 bg-primary text-white rounded-lg text-sm hover:bg-blue-600">▶️ 播放预览</button>
           </div>
 
-          <!-- 功能2预览：口型 -->
+          <!-- 功能2预览 - 添加SNR选择 -->
           <div id="preview2" class="hidden">
-            <div class="relative rounded-xl overflow-hidden bg-gray-900" style="aspect-ratio:16/9;">
-              <video id="previewVideo" class="w-full h-full object-cover" autoplay muted loop playsinline>
+            <div class="relative rounded-xl overflow-hidden bg-gray-900" style="aspect-ratio:16/9; max-width:800px; margin:0 auto;">
+              <video id="previewVideo" class="w-full h-full object-cover" muted playsinline>
                 <source id="previewSrc" src="" type="video/mp4">
               </video>
             </div>
-            <div class="mt-3">
-              <label class="text-xs text-gray-500">马赛克模糊度：</label>
-              <input type="range" id="previewBlurSlider" min="0" max="60" step="5" value="0" class="w-full">
-              <div class="flex justify-between text-xs text-gray-400 mt-1">
-                <span>0% 清晰</span><span>30%</span><span>60% 马赛克</span>
+            <div class="mt-3 space-y-2">
+              <div>
+                <label class="text-xs text-gray-500">SNR（信噪比）：</label>
+                <input type="range" id="previewSNRSlider2" min="-12" max="6" step="3" value="0" class="w-full mt-1">
+                <div class="flex justify-between text-xs text-gray-400 mt-1">
+                  <span>-12dB</span><span>-6</span><span>0</span><span>+3</span><span>+6dB</span>
+                </div>
+                <div class="text-center mt-1"><span class="px-3 py-1 bg-blue-100 rounded text-blue-600 text-sm font-bold" id="previewSNRText2">SNR: 0 dB</span></div>
+              </div>
+              <div>
+                <label class="text-xs text-gray-500">马赛克模糊度：</label>
+                <input type="range" id="previewBlurSlider" min="0" max="60" step="5" value="0" class="w-full">
               </div>
             </div>
-            <div class="mt-2 text-sm">
-              <span class="px-2 py-1 bg-blue-100 rounded text-blue-600 text-xs">SNR: <span id="prev2SNR">0</span>dB</span>
-              <span class="px-2 py-1 bg-purple-100 rounded text-purple-600 text-xs">模糊度: <span id="prev2Blur">0</span>%</span>
-            </div>
-            <button onclick="playPreview()" class="mt-3 w-full px-6 py-2 bg-primary text-white rounded-lg text-sm hover:bg-blue-600">
-              ▶️ 播放预览
-            </button>
+            <button onclick="playPreview()" class="mt-3 w-full px-6 py-2 bg-primary text-white rounded-lg text-sm hover:bg-blue-600">▶️ 播放预览</button>
           </div>
 
-          <!-- 功能3预览：双视频 -->
+          <!-- 功能3预览 - 单视频 + SNR + 模糊度 + SOA -->
           <div id="preview3" class="hidden">
-            <div class="grid grid-cols-2 gap-2">
-              <div class="relative rounded-lg overflow-hidden bg-gray-900" style="aspect-ratio:16/9;">
-                <video id="previewVideoA" class="w-full h-full object-cover" autoplay muted loop playsinline>
-                  <source id="previewSrcA" src="" type="video/mp4">
-                </video>
-                <div class="absolute bottom-1 left-1 bg-black/60 text-white text-xs px-1 rounded">A</div>
+            <div class="relative rounded-xl overflow-hidden bg-gray-900 mx-auto" style="aspect-ratio:16/9; max-width:800px;">
+              <video id="previewVideo3" class="w-full h-full object-cover" muted playsinline>
+                <source id="previewSrc3" src="" type="video/mp4">
+              </video>
+              <div class="absolute bottom-1 left-1 bg-black/60 text-white text-xs px-1 rounded">预览视频</div>
+            </div>
+            <div class="mt-3 space-y-2">
+              <div>
+                <label class="text-xs text-gray-500">SNR（信噪比）：</label>
+                <input type="range" id="previewSNRSlider3" min="-12" max="6" step="3" value="0" class="w-full mt-1">
+                <div class="flex justify-between text-xs text-gray-400 mt-1">
+                  <span>-12dB</span><span>-6</span><span>0</span><span>+3</span><span>+6dB</span>
+                </div>
+                <div class="text-center mt-1"><span class="px-3 py-1 bg-blue-100 rounded text-blue-600 text-sm font-bold" id="previewSNRText3">SNR: 0 dB</span></div>
               </div>
-              <div class="relative rounded-lg overflow-hidden bg-gray-900" style="aspect-ratio:16/9;">
-                <video id="previewVideoB" class="w-full h-full object-cover" autoplay muted loop playsinline>
-                  <source id="previewSrcB" src="" type="video/mp4">
-                </video>
-                <div class="absolute bottom-1 right-1 bg-black/60 text-white text-xs px-1 rounded">B</div>
+              <div>
+                <label class="text-xs text-gray-500">模糊度（像素化）：</label>
+                <input type="range" id="previewBlurSlider3" min="0" max="60" step="5" value="0" class="w-full mt-1">
+                <div class="flex justify-between text-xs text-gray-400 mt-1">
+                  <span>0%（清晰）</span><span>20%</span><span>40%</span><span>60%（极糊）</span>
+                </div>
+                <div class="text-center mt-1"><span class="px-3 py-1 bg-purple-100 rounded text-purple-600 text-sm font-bold" id="previewBlurText3">模糊度: 0%</span></div>
+              </div>
+              <div>
+                <label class="text-xs text-gray-500">SOA（音视频延迟）：</label>
+                <input type="range" id="previewSOASlider" min="-300" max="300" step="50" value="0" class="w-full mt-1">
+                <div class="flex justify-between text-xs text-gray-400 mt-1">
+                  <span>-300ms</span><span>-150</span><span>0</span><span>+150</span><span>+300ms</span>
+                </div>
+                <div class="text-center mt-1"><span class="px-3 py-1 bg-orange-100 rounded text-orange-600 text-sm font-bold" id="prev3SOAText">SOA: 0 ms</span></div>
               </div>
             </div>
-            <div class="mt-3">
-              <label class="text-xs text-gray-500">SOA偏移：</label>
-              <input type="range" id="previewSOASlider" min="-300" max="300" step="50" value="0" class="w-full">
-              <div class="flex justify-between text-xs text-gray-400 mt-1">
-                <span>-300ms(提前)</span><span>0</span><span>+300ms(滞后)</span>
-              </div>
-              <div class="mt-1 text-center">
-                <span class="px-3 py-1 bg-orange-100 rounded text-orange-600 text-sm font-bold" id="prev3SOAText">SOA: 0 ms</span>
-              </div>
-            </div>
-            <button onclick="playPreview()" class="mt-3 w-full px-6 py-2 bg-primary text-white rounded-lg text-sm hover:bg-blue-600">
-              ▶️ 播放预览
-            </button>
+            <button onclick="playPreview()" class="mt-3 w-full px-6 py-2 bg-primary text-white rounded-lg text-sm hover:bg-blue-600">▶️ 播放预览</button>
           </div>
 
-          <!-- 功能4预览：双说话人 -->
+          <!-- 功能4预览 - 添加SNR、注意条件、目标位置选择 -->
           <div id="preview4" class="hidden">
-            <div class="grid grid-cols-2 gap-2">
+            <div class="grid grid-cols-2 gap-4">
               <div class="relative rounded-lg overflow-hidden bg-gray-900" style="aspect-ratio:16/9;">
-                <video id="previewMain" class="w-full h-full object-cover" autoplay muted loop playsinline>
+                <video id="previewMain" class="w-full h-full object-cover" muted playsinline>
                   <source id="previewMainSrc" src="" type="video/mp4">
                 </video>
-                <div class="absolute top-1 left-1 bg-blue-600 text-white text-xs px-1 rounded">目标</div>
+                <div id="previewTargetLabel" class="absolute top-1 left-1 bg-blue-600 text-white text-xs px-2 py-0.5 rounded">👤 目标（左）</div>
               </div>
               <div class="relative rounded-lg overflow-hidden bg-gray-900" style="aspect-ratio:16/9;">
-                <video id="previewDist" class="w-full h-full object-cover" autoplay muted loop playsinline>
+                <video id="previewDist" class="w-full h-full object-cover" muted playsinline>
                   <source id="previewDistSrc" src="" type="video/mp4">
                 </video>
-                <div class="absolute top-1 right-1 bg-red-600 text-white text-xs px-1 rounded">干扰</div>
+                <div class="absolute top-1 right-1 bg-red-600 text-white text-xs px-2 py-0.5 rounded">🚫 干扰</div>
               </div>
             </div>
-            <div class="mt-2 p-2 bg-green-50 rounded text-xs text-green-600">
-              目标说话人 + 干扰说话人 + 噪音（SNR可调）
+            <div class="mt-3 space-y-2">
+              <div>
+                <label class="text-xs text-gray-500">SNR（信噪比）：</label>
+                <input type="range" id="previewSNRSlider4" min="-12" max="6" step="3" value="0" class="w-full mt-1">
+                <div class="flex justify-between text-xs text-gray-400 mt-1">
+                  <span>-12dB</span><span>-6</span><span>0</span><span>+3</span><span>+6dB</span>
+                </div>
+                <div class="text-center mt-1"><span class="px-3 py-1 bg-blue-100 rounded text-blue-600 text-sm font-bold" id="previewSNRText4">SNR: 0 dB</span></div>
+              </div>
+              <div>
+                <label class="text-xs text-gray-500">注意条件：</label>
+                <div class="flex gap-2 mt-1">
+                  <label class="flex items-center gap-1 text-sm">
+                    <input type="radio" name="previewAttCondition" value="single" checked>
+                    <span>单说话人</span>
+                  </label>
+                  <label class="flex items-center gap-1 text-sm">
+                    <input type="radio" name="previewAttCondition" value="dual">
+                    <span>双说话人竞争</span>
+                  </label>
+                </div>
+              </div>
+              <div>
+                <label class="text-xs text-gray-500">目标说话人位置：</label>
+                <div class="flex gap-2 mt-1">
+                  <label class="flex items-center gap-1 text-sm">
+                    <input type="radio" name="previewTargetSide" value="left" checked>
+                    <span>左侧</span>
+                  </label>
+                  <label class="flex items-center gap-1 text-sm">
+                    <input type="radio" name="previewTargetSide" value="right">
+                    <span>右侧</span>
+                  </label>
+                </div>
+              </div>
             </div>
-            <button onclick="playPreview()" class="mt-3 w-full px-6 py-2 bg-primary text-white rounded-lg text-sm hover:bg-blue-600">
-              ▶️ 播放预览
-            </button>
+            <button onclick="playPreview()" class="mt-3 w-full px-6 py-2 bg-primary text-white rounded-lg text-sm hover:bg-blue-600">▶️ 播放预览</button>
           </div>
         </div>
 
         <!-- 生成按钮 -->
         <div class="bg-white rounded-2xl shadow-xl p-6">
           <h3 class="font-bold text-gray-800 mb-3">🚀 准备就绪</h3>
-          <div class="p-3 bg-blue-50 rounded-lg text-sm text-blue-700 mb-4">
-            <div id="summaryText">请检查上方设置</div>
-          </div>
           <button onclick="generateTrials()" class="w-full py-4 bg-success hover:bg-emerald-600 text-white text-lg font-bold rounded-xl shadow-lg transition-all">
             🔧 生成程序
           </button>
@@ -367,92 +598,106 @@
   </div>
 </div>
 
-<!-- ====== 屏幕3：生成完成 ====== -->
+
+<!-- ================================================================
+  屏幕3：生成完成
+================================================================ -->
 <div id="screen_generate" class="screen">
   <div class="container mx-auto px-4 py-8 max-w-2xl">
     <div class="bg-white rounded-2xl shadow-xl p-8 text-center">
       <div class="text-6xl mb-4">✅</div>
-      <h2 class="text-2xl font-bold text-gray-800 mb-2">程序生成完成！</h2>
-      <p class="text-gray-500 mb-6">已生成 <span id="generateCount" class="text-primary font-bold">0</span> 个试次</p>
-      
-      <!-- ✅ 动态生成的实验设置摘要 -->
-      <div class="p-4 bg-gray-50 rounded-xl mb-6 text-left text-sm">
-        <h3 class="font-bold text-gray-700 mb-2">📋 实验设置摘要：</h3>
-        <ul id="expSettingsList" class="text-gray-600 space-y-1">
-          <!-- 动态生成 -->
-        </ul>
+      <h2 class="text-2xl font-bold text-gray-800 mb-2">准备完毕！</h2>
+      <p class="text-gray-500 mb-6">共 <span id="generateCount" class="text-primary font-bold text-xl">0</span> 道题目</p>
+
+      <div class="p-4 bg-gray-50 rounded-xl mb-4 text-left text-sm">
+        <ul id="expSettingsList" class="text-gray-600 space-y-1"></ul>
       </div>
-      
       <div class="p-4 bg-blue-50 rounded-xl mb-6 text-left text-sm">
-        <h3 class="font-bold text-blue-700 mb-2">🎯 实验参数：</h3>
-        <ul id="expParamsList" class="text-blue-600 space-y-1">
-          <!-- 动态生成 -->
-        </ul>
+        <ul id="expParamsList" class="text-blue-600 space-y-1"></ul>
       </div>
-      
+
+      <!-- 操作指南提示 -->
+      <div class="mb-6 p-4 bg-green-50 rounded-xl border border-green-200 text-left">
+        <div class="font-bold text-green-700 mb-2">📖 开始前提醒</div>
+        <div class="text-sm text-green-800 space-y-1">
+          <div>• 点击 <strong>▶️ 播放</strong> 按钮（或按键盘空格键）听声音</div>
+          <div>• 听完后立即从 <strong>A/B/C/D</strong> 四个选项中选择您听到的内容</div>
+          <div>• 系统会自动给出正确答案</div>
+        </div>
+      </div>
+
       <div class="flex gap-4 justify-center">
-        <button onclick="goToPreparation()" class="px-8 py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold rounded-xl">
+        <button onclick="goToPreparation()" class="px-6 py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold rounded-xl">
           ← 返回修改
         </button>
-        <button onclick="startExperiment()" class="px-8 py-3 bg-success hover:bg-emerald-600 text-white font-bold rounded-xl shadow-lg">
-          ▶️ 开始实验
+        <button onclick="startExperiment()" class="px-10 py-4 bg-success hover:bg-emerald-600 text-white text-xl font-bold rounded-xl shadow-lg">
+          ▶️ 开始训练
         </button>
       </div>
     </div>
   </div>
 </div>
 
-<!-- ====== 屏幕4：实验进行中 ====== -->
+
+<!-- ================================================================
+  屏幕4：实验进行中（面向病人优化布局）
+================================================================ -->
 <div id="screen_exp" class="screen">
-  <div class="container mx-auto px-4 py-6 max-w-6xl">
-    <div class="flex items-center justify-between mb-4">
-      <div class="flex items-center gap-4">
-        <button onclick="confirmQuit()" class="px-3 py-1 bg-red-100 text-red-600 rounded-lg text-sm hover:bg-red-200">❌ 退出</button>
+  <div class="container mx-auto px-3 py-4 max-w-5xl">
+
+    <!-- 顶栏 -->
+    <div class="flex items-center justify-between mb-3">
+      <div class="flex items-center gap-3">
+        <button onclick="confirmQuit()" class="px-3 py-1.5 bg-red-100 text-red-600 rounded-lg text-sm hover:bg-red-200">❌ 退出</button>
         <div>
-          <div class="font-bold text-gray-800" id="expTitleBar">功能一 · 训练前测试</div>
-          <div class="text-xs text-gray-500" id="expSubtitleBar">被试 S001</div>
+          <div class="font-bold text-gray-800 text-lg" id="expTitleBar">训练中</div>
+          <div class="text-xs text-gray-500" id="expSubtitleBar">被试 P001</div>
         </div>
       </div>
+      <!-- 进度 inline -->
       <div class="flex items-center gap-3">
+        <div class="text-sm text-gray-500" id="expProgressText">0 / 0</div>
         <div id="expPhaseTag" class="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg text-sm font-medium">训练中</div>
       </div>
     </div>
 
-    <!-- 进度 -->
-    <div class="bg-white rounded-xl p-4 mb-4 shadow">
-      <div class="flex justify-between text-sm text-gray-500 mb-2">
-        <span id="expProgressText">试次 0 / 0</span>
-        <span id="expConditionText">条件：--</span>
-      </div>
-      <div class="h-2 bg-gray-200 rounded-full overflow-hidden">
-        <div id="expProgressBar" class="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all" style="width:0%"></div>
-      </div>
+    <!-- 新增：试次开始提示（功能4专用，默认隐藏） -->
+    <div id="trialHint" class="hidden text-center py-4 mb-3">
+      <div class="inline-block px-6 py-3 bg-amber-100 border-2 border-amber-400 rounded-2xl text-xl font-bold text-amber-800" id="trialHintText"></div>
+    </div>
+    
+    <!-- 进度条 -->
+    <div class="h-2.5 bg-gray-200 rounded-full overflow-hidden mb-4">
+      <div id="expProgressBar" class="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all" style="width:0%"></div>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-      <!-- 左侧：视频/音频 -->
-      <div class="lg:col-span-2 space-y-3">
+    <!-- 主体：左视频/音频 | 右答题 -->
+    <div class="grid grid-cols-1 lg:grid-cols-7 gap-4">
+    
+      <!-- 左侧：视频区域（占5/7宽度） -->
+      <div class="lg:col-span-5 space-y-3">
 
-        <!-- 功能1：纯音频 -->
+        <!-- 功能1 -->
         <div id="expView1" class="bg-white rounded-2xl shadow-xl p-6">
-          <div class="text-center py-6">
+          <div class="text-center py-4">
             <div class="text-8xl mb-3">🔊</div>
-            <div class="text-gray-500 mb-2">请仔细听音频内容</div>
-            <div class="inline-block px-8 py-4 bg-blue-50 rounded-2xl">
-              <div class="text-xs text-blue-400 mb-1">当前 SNR</div>
-              <div class="text-4xl font-bold text-blue-600" id="expSNRDisplay">0 dB</div>
+            <div class="text-gray-500 mb-3 text-lg">请仔细听声音</div>
+            <div class="inline-block px-8 py-3 bg-blue-50 rounded-2xl">
+              <div class="text-xs text-blue-400 mb-1">当前噪音强度</div>
+              <div class="text-3xl font-bold text-blue-600" id="expSNRDisplay">0 dB</div>
             </div>
           </div>
-          <button onclick="expPlay()" id="exp1PlayBtn" class="w-full mt-2 py-4 bg-emerald-500 hover:bg-emerald-600 text-white text-xl font-bold rounded-xl shadow-lg transition-all">
-            ▶️ 播放音频（空格）
+          <button onclick="expPlay()" id="exp1PlayBtn"
+            class="w-full mt-3 py-5 bg-emerald-500 hover:bg-emerald-600 text-white text-2xl font-bold rounded-2xl shadow-lg transition-all play-pulse patient-btn">
+            ▶️ 播放（按空格键）
           </button>
         </div>
 
-        <!-- 功能2：口型 -->
-        <div id="expView2" class="bg-white rounded-2xl shadow-xl p-6 hidden">
+        <!-- 功能2 -->
+        <div id="expView2" class="bg-white rounded-2xl shadow-xl p-5 hidden">
           <div class="text-gray-500 text-sm mb-2">请结合口型信息，听辨内容</div>
-          <div class="relative rounded-xl overflow-hidden bg-gray-900" style="aspect-ratio:16/9;">
-            <video id="expVideo" class="w-full h-full object-cover" autoplay muted playsinline>
+          <div class="relative rounded-xl overflow-hidden bg-gray-900 mx-auto" style="aspect-ratio:16/9; max-width:100%;">
+            <video id="expVideo" class="w-full h-full object-cover" muted playsinline>
               <source id="expVideoSrc" src="" type="video/mp4">
             </video>
           </div>
@@ -466,54 +711,63 @@
               <div class="font-bold text-purple-600" id="exp2Blur">0%</div>
             </div>
           </div>
-          <button onclick="expPlay()" id="exp2PlayBtn" class="w-full mt-3 py-3 bg-emerald-500 hover:bg-emerald-600 text-white text-lg font-bold rounded-xl shadow-lg">
-            ▶️ 播放（空格）
+          <button onclick="expPlay()" id="exp2PlayBtn"
+            class="w-full mt-3 py-5 bg-emerald-500 hover:bg-emerald-600 text-white text-2xl font-bold rounded-2xl shadow-lg patient-btn">
+            ▶️ 播放（按空格键）
           </button>
         </div>
 
-        <!-- 功能3：双视频 -->
-        <div id="expView3" class="bg-white rounded-2xl shadow-xl p-6 hidden">
-          <div class="text-gray-500 text-sm mb-2">请注意两个说话人的同步关系</div>
-          <div class="grid grid-cols-2 gap-2">
-            <div class="relative rounded-xl overflow-hidden bg-gray-900" style="aspect-ratio:16/9;">
-              <video id="expVideoA" class="w-full h-full object-cover" autoplay muted playsinline>
-                <source id="expSrcA" src="" type="video/mp4">
-              </video>
-              <div class="absolute bottom-1 left-1 bg-black/60 text-white text-xs px-1 rounded">说话人A</div>
+        <!-- 功能3 - 单视频窗口，SOA = 音视频延迟 -->
+        <div id="expView3" class="bg-white rounded-2xl shadow-xl p-5 hidden">
+          <div class="text-gray-500 text-sm mb-2">请注意口型与声音的同步关系（SOA = 音视频不同步量）</div>
+          <div class="relative rounded-xl overflow-hidden bg-gray-900 mx-auto" style="aspect-ratio:16/9; max-width:100%;">
+            <video id="expVideo3" class="w-full h-full object-cover" muted playsinline>
+              <source id="expVideo3Src" src="" type="video/mp4">
+            </video>
+          </div>
+          <div class="mt-2 text-center">
+            <span class="px-4 py-1 bg-orange-50 rounded-lg text-orange-600 font-bold text-lg" id="exp3SOA">0 ms</span>
+          </div>
+          <div class="mt-2 grid grid-cols-2 gap-2">
+            <div class="text-center p-2 bg-blue-50 rounded-lg">
+              <div class="text-xs text-gray-400">SNR</div>
+              <div class="font-bold text-blue-600" id="exp3SNR">0 dB</div>
             </div>
-            <div class="relative rounded-xl overflow-hidden bg-gray-900" style="aspect-ratio:16/9;">
-              <video id="expVideoB" class="w-full h-full object-cover" autoplay muted playsinline>
-                <source id="expSrcB" src="" type="video/mp4">
-              </video>
-              <div class="absolute bottom-1 right-1 bg-black/60 text-white text-xs px-1 rounded">说话人B</div>
+            <div class="text-center p-2 bg-orange-50 rounded-lg">
+              <div class="text-xs text-gray-400">SOA</div>
+              <div class="font-bold text-orange-600" id="exp3SOAValue">0 ms</div>
             </div>
           </div>
-          <div class="mt-3 text-center">
-            <span class="px-6 py-2 bg-orange-50 rounded-lg text-orange-600 font-bold text-xl" id="exp3SOA">0 ms</span>
-          </div>
-          <button onclick="expPlay()" id="exp3PlayBtn" class="w-full mt-3 py-3 bg-emerald-500 hover:bg-emerald-600 text-white text-lg font-bold rounded-xl shadow-lg">
-            ▶️ 同步播放（空格）
+          <button onclick="expPlay()" id="exp3PlayBtn"
+            class="w-full mt-3 py-5 bg-emerald-500 hover:bg-emerald-600 text-white text-2xl font-bold rounded-2xl shadow-lg patient-btn">
+            ▶️ 播放（按空格键）
           </button>
         </div>
 
-        <!-- 功能4：双说话人 -->
-        <div id="expView4" class="bg-white rounded-2xl shadow-xl p-6 hidden">
-          <div class="text-gray-500 text-sm mb-2">请定位目标说话人的内容</div>
-          <div class="grid grid-cols-2 gap-2">
-            <div class="relative rounded-xl overflow-hidden bg-gray-900" style="aspect-ratio:16/9;">
-              <video id="expVideoTarget" class="w-full h-full object-cover" autoplay muted playsinline>
-                <source id="expTargetSrc" src="" type="video/mp4">
-              </video>
-              <div class="absolute top-1 left-1 bg-blue-600 text-white text-xs px-2 py-0.5 rounded">👤 目标</div>
+        <!-- 功能4 -->
+        <div id="expView4" class="bg-white rounded-2xl shadow-xl p-5 hidden">
+          <div class="text-gray-500 text-sm mb-2" id="expQuestion">请定位<strong>左侧</strong>目标说话人的内容</div>
+          <div class="relative" id="videoContainer4">
+            <!-- 覆盖层：用于显示提示 -->
+            <div id="trialOverlay" class="hidden absolute inset-0 z-10 flex items-center justify-center bg-black/60 rounded-xl">
+              <div class="px-8 py-4 bg-amber-100 border-2 border-amber-400 rounded-2xl text-2xl font-bold text-amber-800" id="trialOverlayText"></div>
             </div>
-            <div class="relative rounded-xl overflow-hidden bg-gray-900" style="aspect-ratio:16/9;" id="distractorWrapper">
-              <video id="expVideoDist" class="w-full h-full object-cover" autoplay muted playsinline>
-                <source id="expDistSrc" src="" type="video/mp4">
-              </video>
-              <div class="absolute top-1 right-1 bg-red-600 text-white text-xs px-2 py-0.5 rounded">🚫 干扰</div>
+            <div class="grid grid-cols-2 gap-4">
+              <div class="relative rounded-xl overflow-hidden bg-gray-900" style="aspect-ratio:16/9;">
+                <video id="expVideoTarget" class="w-full h-full object-cover" muted playsinline>
+                  <source id="expTargetSrc" src="" type="video/mp4">
+                </video>
+                <div class="absolute top-1 left-1 bg-blue-600 text-white text-xs px-2 py-0.5 rounded">👤 目标</div>
+              </div>
+              <div class="relative rounded-xl overflow-hidden bg-gray-900" style="aspect-ratio:16/9;" id="distractorWrapper">
+                <video id="expVideoDist" class="w-full h-full object-cover" muted playsinline>
+                  <source id="expDistSrc" src="" type="video/mp4">
+                </video>
+                <div class="absolute top-1 right-1 bg-red-600 text-white text-xs px-2 py-0.5 rounded">🚫 干扰</div>
+              </div>
             </div>
           </div>
-          <div class="mt-3 grid grid-cols-2 gap-2">
+          <div class="mt-2 grid grid-cols-2 gap-2">
             <div class="text-center p-2 bg-blue-50 rounded-lg">
               <div class="text-xs text-gray-400">条件</div>
               <div class="font-bold text-blue-600" id="exp4Att">单说话人</div>
@@ -523,30 +777,36 @@
               <div class="font-bold text-orange-600" id="exp4SNR">0 dB</div>
             </div>
           </div>
-          <button onclick="expPlay()" id="exp4PlayBtn" class="w-full mt-3 py-3 bg-emerald-500 hover:bg-emerald-600 text-white text-lg font-bold rounded-xl shadow-lg">
-            ▶️ 播放（空格）
+          <button onclick="expPlay()" id="exp4PlayBtn"
+            class="w-full mt-3 py-5 bg-emerald-500 hover:bg-emerald-600 text-white text-2xl font-bold rounded-2xl shadow-lg patient-btn">
+            ▶️ 播放（按空格键）
           </button>
         </div>
       </div>
 
-      <!-- 右侧：任务 + 统计 -->
-      <div class="space-y-3">
+      <!-- 右侧答题区（更大、更突出） -->
+      <div class="lg:col-span-2 space-y-3">
+
+        <!-- 任务说明 -->
         <div class="bg-white rounded-2xl shadow-xl p-5">
-          <h3 class="font-bold text-gray-800 mb-3">🎤 听辨任务</h3>
-          <p class="text-gray-600 text-sm mb-3" id="expQuestion">请仔细听音频，选择正确词语：</p>
-          <div id="expChoices" class="space-y-2">
-            <button class="choice-btn w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-left font-medium" disabled>A. --</button>
-            <button class="choice-btn w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-left font-medium" disabled>B. --</button>
-            <button class="choice-btn w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-left font-medium" disabled>C. --</button>
-            <button class="choice-btn w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-left font-medium" disabled>D. --</button>
+          <div class="text-gray-500 text-sm mb-1" id="expQuestion">请仔细听，选出您听到的内容：</div>
+
+          <!-- 选项按钮 - 大字体、大间距 -->
+          <div id="expChoices" class="space-y-3 mt-3">
+            <button class="choice-btn w-full py-4 px-5 bg-gray-50 border-2 border-gray-200 rounded-2xl text-left text-xl font-bold" disabled>A. --</button>
+            <button class="choice-btn w-full py-4 px-5 bg-gray-50 border-2 border-gray-200 rounded-2xl text-left text-xl font-bold" disabled>B. --</button>
+            <button class="choice-btn w-full py-4 px-5 bg-gray-50 border-2 border-gray-200 rounded-2xl text-left text-xl font-bold" disabled>C. --</button>
+            <button class="choice-btn w-full py-4 px-5 bg-gray-50 border-2 border-gray-200 rounded-2xl text-left text-xl font-bold" disabled>D. --</button>
           </div>
-          <div id="expFeedback" class="mt-3 p-3 rounded-xl text-center hidden">
-            <p id="expFeedbackText" class="font-bold"></p>
+
+          <!-- 反馈 -->
+          <div id="expFeedback" class="mt-4 p-4 rounded-2xl text-center hidden">
+            <p id="expFeedbackText" class="font-bold text-xl"></p>
           </div>
         </div>
 
-        <div class="bg-white rounded-2xl shadow-xl p-5">
-          <h3 class="font-bold text-gray-800 mb-3">📊 实时统计</h3>
+        <!-- 实时统计 -->
+        <div class="bg-white rounded-2xl shadow-xl p-4">
           <div class="grid grid-cols-2 gap-2">
             <div class="bg-blue-50 p-3 rounded-xl text-center">
               <div class="text-2xl font-bold text-blue-600" id="eStatTrials">0</div>
@@ -559,47 +819,58 @@
           </div>
         </div>
 
+        <!-- 当前条件标签 -->
         <div class="bg-gradient-to-br from-blue-500 to-purple-600 text-white rounded-2xl p-4">
           <div class="font-bold" id="expPhaseCard">🏋️ 训练中</div>
           <div class="text-sm opacity-90 mt-1" id="expFuncCard">功能一 · 抗干扰</div>
+          <div class="text-xs opacity-70 mt-1" id="expConditionText">条件：--</div>
         </div>
       </div>
     </div>
   </div>
 </div>
 
-<!-- ====== 屏幕5：结果分析 ====== -->
+
+<!-- ================================================================
+  屏幕5：结果分析
+================================================================ -->
 <div id="screen_results" class="screen">
   <div class="container mx-auto px-4 py-6 max-w-5xl">
     <div class="bg-white rounded-2xl shadow-xl p-8">
+
+      <!-- 完成提示 - 面向病人更友好 -->
       <div class="text-center mb-6">
-        <div class="text-6xl mb-2">🎉</div>
-        <h2 class="text-2xl font-bold text-gray-800">实验完成！</h2>
-        <p class="text-gray-500" id="resSubtitle">被试 S001 · 功能一 · 训练中</p>
+        <div class="text-6xl mb-3">🎉</div>
+        <h2 class="text-3xl font-bold text-gray-800">训练完成！</h2>
+        <p class="text-gray-500 mt-2" id="resSubtitle">被试 P001 · 功能一 · 训练中</p>
+      </div>
+
+      <!-- 鼓励语 -->
+      <div id="encourageMsg" class="mb-5 p-4 bg-yellow-50 rounded-2xl border border-yellow-200 text-center">
+        <div class="text-lg font-bold text-yellow-700">您已完成本次训练，请告知工作人员。</div>
       </div>
 
       <div class="grid grid-cols-4 gap-3 mb-6">
-        <div class="result-card bg-blue-50 p-4 rounded-xl text-center">
+        <div class="bg-blue-50 p-4 rounded-xl text-center">
           <div class="text-3xl font-bold text-blue-600" id="rTotal">0</div>
-          <div class="text-xs text-gray-500 mt-1">总试次</div>
+          <div class="text-xs text-gray-500 mt-1">总题数</div>
         </div>
-        <div class="result-card bg-green-50 p-4 rounded-xl text-center">
+        <div class="bg-green-50 p-4 rounded-xl text-center">
           <div class="text-3xl font-bold text-green-600" id="rAcc">0%</div>
           <div class="text-xs text-gray-500 mt-1">正确率</div>
         </div>
-        <div class="result-card bg-orange-50 p-4 rounded-xl text-center">
+        <div class="bg-orange-50 p-4 rounded-xl text-center">
           <div class="text-3xl font-bold text-orange-600" id="rRT">0ms</div>
           <div class="text-xs text-gray-500 mt-1">平均反应时</div>
         </div>
-        <div class="result-card bg-purple-50 p-4 rounded-xl text-center">
+        <div class="bg-purple-50 p-4 rounded-xl text-center">
           <div class="text-3xl font-bold text-purple-600" id="rDuration">0min</div>
-          <div class="text-xs text-gray-500 mt-1">实验时长</div>
+          <div class="text-xs text-gray-500 mt-1">训练时长</div>
         </div>
       </div>
 
-      <!-- 阈值卡片 -->
-      <div class="mb-6">
-        <h3 class="font-bold text-gray-800 mb-3">📊 阈值计算结果</h3>
+      <!-- 阈值 -->
+      <div class="mb-5">
         <div class="bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl p-4 border border-purple-100">
           <div class="flex items-center justify-between">
             <div>
@@ -608,35 +879,34 @@
             </div>
             <div class="text-xs text-gray-400" id="rThresholdDesc">达到80%正确率所需的最低SNR</div>
           </div>
+          <div class="mt-2 p-3 bg-white/80 rounded-lg text-xs text-gray-700 hidden" id="thresholdExplanation">
+            阈值解释将在这里显示
+          </div>
         </div>
       </div>
 
       <!-- 心理物理曲线 -->
-      <div class="mb-6">
-        <h3 class="font-bold text-gray-800 mb-3">📈 心理物理曲线（Sigmoid 拟合）</h3>
+      <div class="mb-5">
+        <h3 class="font-bold text-gray-800 mb-2">📈 心理物理曲线</h3>
         <div class="bg-white rounded-xl border border-gray-200 p-3">
-          <canvas id="psychCurve" style="width:100%; height:320px; display:block;"></canvas>
+          <canvas id="psychCurve" style="width:100%; height:280px; display:block;"></canvas>
         </div>
-        <p class="text-xs text-gray-400 mt-2" id="psychCurveNote">
-          P(x) = γ + (1-γ-λ) / (1 + e<sup>-β(x-α)</sup>) · γ=猜测率 λ=失误率 α=阈值 β=斜率 · Nelder-Mead MLE
+        <p class="text-xs text-gray-400 mt-1" id="psychCurveNote">
+          P(x) = γ + (1-γ-λ) / (1 + e<sup>-β(x-α)</sup>)
         </p>
       </div>
 
-      <!-- 行为详情表 -->
-      <div class="mb-6">
-        <h3 class="font-bold text-gray-800 mb-3">📋 行为数据详情</h3>
-        <div class="overflow-x-auto max-h-64">
+      <!-- 详情表 -->
+      <div class="mb-5">
+        <h3 class="font-bold text-gray-800 mb-2">📋 行为数据详情</h3>
+        <div class="overflow-x-auto max-h-60">
           <table class="w-full text-sm">
             <thead class="bg-gray-100 sticky top-0">
               <tr id="resTableHead">
-                <th class="p-2 text-left">试次</th>
+                <th class="p-2 text-left">题次</th>
                 <th class="p-2 text-left">SNR</th>
-                <th class="p-2 text-left">模糊度</th>
-                <th class="p-2 text-left">SOA</th>
-                <th class="p-2 text-left">条件</th>
                 <th class="p-2 text-left">正确</th>
                 <th class="p-2 text-left">反应时</th>
-                <th class="p-2 text-left">选择</th>
               </tr>
             </thead>
             <tbody id="resTableBody" class="text-xs"></tbody>
@@ -644,43 +914,25 @@
         </div>
       </div>
 
-      <div class="text-center mt-8 flex justify-center gap-4 flex-wrap">
-        <button onclick="goToMenu()" class="px-8 py-3 bg-blue-500 hover:bg-blue-600 text-white font-bold rounded-xl shadow">🔄 重新开始</button>
-        <button onclick="exportResults()" class="px-8 py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl shadow">📥 保存并导出</button>
-        <button onclick="showHistory()" class="px-8 py-3 bg-gray-500 hover:bg-gray-600 text-white font-bold rounded-xl shadow">📁 历史记录</button>
+      <div class="flex justify-center gap-4 flex-wrap">
+        <button onclick="goToQuickScreen()" class="px-8 py-3 bg-blue-500 hover:bg-blue-600 text-white font-bold rounded-xl shadow">🏠 返回首页</button>
+        <button onclick="exportResults()" class="px-8 py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl shadow">📥 导出数据</button>
+        <a href="history.html" class="inline-block px-8 py-3 bg-gray-500 hover:bg-gray-600 text-white font-bold rounded-xl shadow text-center">📁 历史记录</a>
       </div>
     </div>
   </div>
 </div>
 
-<!-- ====== 屏幕6：历史记录 ====== -->
-<div id="screen_history" class="screen">
-  <div class="container mx-auto px-4 py-6 max-w-6xl">
-    <div class="bg-white rounded-2xl shadow-xl p-8">
-      <div class="flex items-center justify-between mb-6">
-        <h2 class="text-2xl font-bold text-gray-800">📁 历史记录</h2>
-        <div class="flex gap-3">
-          <button onclick="DataManager.exportToJSON()" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-sm">导出JSON</button>
-          <button onclick="DataManager.exportToCSV()" class="px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 text-sm">导出CSV</button>
-          <button onclick="UIHelper.showScreen('menu')" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-sm">← 返回</button>
-        </div>
-      </div>
-      
-      <div id="historyContent" class="text-center py-8 text-gray-400">
-        暂无历史记录
-      </div>
-    </div>
-  </div>
-</div>
 
-<!-- JS模块加载（顺序重要：Config → Core → Utils → Modules → App） -->
+<!-- JS加载 -->
 <script src="config/constants.js"></script>
 <script src="js/uiHelper.js"></script>
 <script src="js/core/Staircase.js"></script>
 <script src="js/core/EventLogger.js"></script>
-<script src="js/audioProcessor.js"></script>
+<script src="js/audioProcessor_fixed.js"></script>
 <script src="js/psychometric.js"></script>
 <script src="js/dataManager.js"></script>
+<script src="js/adminSettings.js"></script>
 <script src="modules/module1.js"></script>
 <script src="modules/module2.js"></script>
 <script src="modules/module3.js"></script>

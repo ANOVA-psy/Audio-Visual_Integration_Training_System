@@ -34,7 +34,9 @@ const Module1 = (function () {
   // ==================== 试次生成 ====================
 
   /**
-   * 生成试次队列（组合遍历模式）
+   * 生成试次队列（根据阶段自适应）
+   * - 训练前/后：测试所有组合，使用3-up-1-down得到阈值
+   * - 训练阶段：从阈值开始，使用3-up-1-down训练
    * @param {Object} config
    * @param {number[]} config.snrLevels - SNR 级别
    * @param {number} [config.repetitions=3] - 每级重复次数
@@ -45,7 +47,10 @@ const Module1 = (function () {
     var snrLevels = config.snrLevels || Config.SNR_DEFAULT;
     var repetitions = config.repetitions || Config.DEFAULT_REPETITIONS;
     var order = config.order || 'random';
-
+    
+    // 所有阶段都生成试次（pre/post使用组合遍历，train也生成试次）
+    console.log(`[Module1] 生成试次：SNR ${snrLevels.length}档 × ${repetitions}次`);
+    
     var trials = [];
     snrLevels.forEach(function (snr) {
       for (var i = 0; i < repetitions; i++) {
@@ -58,16 +63,16 @@ const Module1 = (function () {
         });
       }
     });
-
+    
     if (order === 'random') {
       trials = shuffleArray(trials);
     } else {
       trials.sort(function (a, b) { return a.snr - b.snr; });
     }
-
+    
     trialQueue = trials;
     currentTrialIndex = 0;
-
+    
     return trials;
   }
 

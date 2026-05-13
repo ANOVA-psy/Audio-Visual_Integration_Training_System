@@ -8,7 +8,7 @@ const UIHelper = (function() {
   
   // 屏幕管理
   function showScreen(screenName) {
-    const screenIds = ['menu', 'prep', 'generate', 'exp', 'results', 'history'];
+    const screenIds = ['quick', 'guide', 'menu', 'prep', 'generate', 'exp', 'results'];
     screenIds.forEach(id => {
       const el = document.getElementById(`screen_${id}`);
       if (el) {
@@ -120,8 +120,17 @@ const UIHelper = (function() {
   }
   
   // 导出公共API
+  
+  // 导航（会改变 URL hash，支持浏览器前进/后退）
+  function navigateTo(screenName) {
+    if (window.location.hash !== `#${screenName}`) {
+      window.location.hash = screenName;
+    }
+  }
+  
   return {
     showScreen,
+    navigateTo,
     hideAllScreens,
     showNotification,
     showLoading,

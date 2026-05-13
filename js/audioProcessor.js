@@ -35,6 +35,10 @@ const AudioProcessor = (function () {
   let taskSource = null;
   /** @type {GainNode|null} */
   let signalGainNode = null;
+  /** @type {HTMLAudioElement|null} 任务音频元素（用于播放 mp4 等视频容器中的音频） */
+  let taskAudioElement = null;
+  /** @type {MediaElementAudioSourceNode|null} */
+  let taskAudioSourceNode = null;
   /** @type {GainNode|null} */
   let masterGainNode = null;
   /** @type {boolean} */
@@ -54,10 +58,15 @@ const AudioProcessor = (function () {
     if (!audioContext) {
       audioContext = new (window.AudioContext || window.webkitAudioContext)();
 
-      // 构建 master → destination 路由
+      // 构建 audio graph: masterGain → destination
       masterGainNode = audioContext.createGain();
       masterGainNode.gain.value = 1.0;
       masterGainNode.connect(audioContext.destination);
+
+      // ★ signalGainNode：任务音频增益节点（持久化，只创建一次）
+      signalGainNode = audioContext.createGain();
+      signalGainNode.gain.value = Config.SIGNAL_GAIN != null ? Config.SIGNAL_GAIN : 0.5;
+      signalGainNode.connect(masterGainNode);
     }
 
     if (audioContext.state === 'suspended') {
@@ -75,32 +84,39 @@ const AudioProcessor = (function () {
 
   /**
    * 加载白噪音文件并解码为 AudioBuffer（仅首次加载，后续使用缓存）
+   * 如果文件不存在，自动使用合成噪音
    * @returns {Promise<AudioBuffer>}
    */
   async function loadNoise() {
     if (noiseBuffer) return noiseBuffer;
 
+    // 尝试加载 WAV 文件
     try {
       const response = await fetch(Config.NOISE.white);
-      if (!response.ok) throw new Error('HTTP ' + response.status);
-
-      const arrayBuffer = await response.arrayBuffer();
-      noiseBuffer = await audioContext.decodeAudioData(arrayBuffer);
-
-      if (typeof EventLogger !== 'undefined') {
-        EventLogger.audio('noise_loaded', {
-          duration: noiseBuffer.duration,
-          channels: noiseBuffer.numberOfChannels,
-          sampleRate: noiseBuffer.sampleRate
-        });
+      if (response.ok) {
+        const arrayBuffer = await response.arrayBuffer();
+        noiseBuffer = await audioContext.decodeAudioData(arrayBuffer);
+        
+        if (typeof EventLogger !== 'undefined') {
+          EventLogger.audio('noise_loaded', {
+            duration: noiseBuffer.duration,
+            channels: noiseBuffer.numberOfChannels,
+            sampleRate: noiseBuffer.sampleRate,
+            source: 'file'
+          });
+        }
+        
+        console.log('[Audio] 噪音文件加载成功');
+        return noiseBuffer;
       }
-
-      return noiseBuffer;
     } catch (error) {
       console.warn('[Audio] 噪音文件加载失败，使用合成噪音:', error);
-      noiseBuffer = createSyntheticNoise();
-      return noiseBuffer;
     }
+    
+    // 备用方案：生成合成粉红噪音
+    console.log('[Audio] 使用合成噪音');
+    noiseBuffer = createSyntheticNoise();
+    return noiseBuffer;
   }
 
   /**
@@ -299,38 +315,103 @@ const AudioProcessor = (function () {
    * @param {string} audioPath - 音频文件路径
    * @returns {Promise<void>}
    */
+  /**
+   * ★ 重写：通过 <audio> 元素播放任务音频文件（支持 mp4 视频容器中的音频轨道）
+   * 使用 MediaElementAudioSourceNode 接入 Web Audio 图，与噪音混合输出
+   * @param {string} audioPath - 音频文件路径（支持 mp4/webm/mp3/wav 等）
+   * @returns {Promise<void>}
+   */
   function playTaskAudioFile(audioPath) {
-    return new Promise(async function (resolve, reject) {
+    return new Promise(function (resolve, reject) {
       try {
-        const audioBuffer = await loadAudioBuffer(audioPath);
+        // 创建 <audio> 元素（仅一次），并创建对应的 MediaElementAudioSourceNode（仅一次）
+        if (!taskAudioElement) {
+          taskAudioElement = document.createElement('audio');
+          taskAudioElement.style.display = 'none';
+          // ★ 不在 file:// 协议下设置 crossOrigin，否则会导致加载失败
+          if (window.location.protocol !== 'file:') {
+            taskAudioElement.crossOrigin = 'anonymous';
+          }
+          document.body.appendChild(taskAudioElement);
 
-        // 停止之前的任务音频
-        if (taskSource) {
-          try { taskSource.stop(); } catch (e) { /* ignore */ }
-          taskSource.disconnect();
+          // ★ 每个 <audio> 元素只能创建一个 MediaElementAudioSourceNode
+          taskAudioSourceNode = audioContext.createMediaElementSource(taskAudioElement);
+          taskAudioSourceNode.connect(signalGainNode);
         }
 
-        taskSource = audioContext.createBufferSource();
-        taskSource.buffer = audioBuffer;
+        // ★ 关键修复：先添加事件监听器，再设置 src
+        // 否则可能错过 canplaythrough 事件
+        let eventTriggered = false;
+        
+        // 错误监听（必须在设置 src 之前）
+        var onError = function (e) {
+          if (eventTriggered) return;
+          eventTriggered = true;
+          taskAudioElement.removeEventListener('error', onError);
+          taskAudioElement.removeEventListener('canplaythrough', onCanPlay);
+          console.error('[Audio] 音频加载失败:', audioPath, e);
+          reject(new Error('音频加载失败: ' + audioPath));
+        };
+        taskAudioElement.addEventListener('error', onError, { once: true });
 
-        signalGainNode = audioContext.createGain();
-        signalGainNode.gain.value = Config.SIGNAL_GAIN;
-        taskSource.connect(signalGainNode);
-        signalGainNode.connect(masterGainNode);
+        // canplaythrough: 音频已足够加载，可以播放
+        var onCanPlay = function () {
+          if (eventTriggered) return;
+          eventTriggered = true;
+          taskAudioElement.removeEventListener('error', onError);
+          taskAudioElement.removeEventListener('canplaythrough', onCanPlay);
+          
+          console.log('[Audio] 音频准备就绪，开始播放:', audioPath);
+          
+          // ★ 修复：只播放，不在这里resolve，等待onended事件
+          taskAudioElement.play().catch(function (err) {
+            console.error('[Audio] 播放失败:', audioPath, err);
+            reject(err);
+          });
+        };
+        taskAudioElement.addEventListener('canplaythrough', onCanPlay, { once: true });
 
-        if (typeof EventLogger !== 'undefined') {
-          EventLogger.audio('file_start', { path: audioPath, duration: audioBuffer.duration });
-        }
+        // ★ 超时保护：5秒后强制继续（防止事件未触发导致卡死）
+        setTimeout(function () {
+          if (!eventTriggered) {
+            eventTriggered = true;
+            taskAudioElement.removeEventListener('error', onError);
+            taskAudioElement.removeEventListener('canplaythrough', onCanPlay);
+            console.warn('[Audio] 音频加载超时，尝试直接播放:', audioPath);
+            // 尝试直接播放
+            taskAudioElement.play().then(function () {
+              resolve();
+            }).catch(function (err) {
+              reject(new Error('音频加载超时: ' + audioPath));
+            });
+          }
+        }, 5000);
 
-        taskSource.onended = function () {
-          if (typeof EventLogger !== 'undefined') EventLogger.audio('file_end', { path: audioPath });
+        // 播放结束事件（必须在设置 src 之前）
+        taskAudioElement.onended = function () {
+          if (eventTriggered) return;
+          eventTriggered = true;
+          console.log('[Audio] 音频播放结束:', audioPath);
+          if (typeof EventLogger !== 'undefined') {
+            EventLogger.audio('file_end', { path: audioPath });
+          }
           resolve();
         };
 
-        taskSource.start();
+        if (typeof EventLogger !== 'undefined') {
+          EventLogger.audio('file_start', { path: audioPath, method: 'MediaElement' });
+        }
+
+        // 设置 src 并加载（在事件监听器添加之后）
+        console.log('[Audio] 开始加载音频:', audioPath);
+        taskAudioElement.src = audioPath;
+        taskAudioElement.load();
+
       } catch (error) {
         console.error('[Audio] 任务音频播放失败:', error);
-        if (typeof EventLogger !== 'undefined') EventLogger.audio('file_error', { error: error.message });
+        if (typeof EventLogger !== 'undefined') {
+          EventLogger.audio('file_error', { error: error.message });
+        }
         reject(error);
       }
     });
@@ -450,20 +531,31 @@ const AudioProcessor = (function () {
   // ==================== 停止控制 ====================
 
   /**
-   * 停止所有音频（彻底停止 + 清理节点）
+   * 停止所有音频（彻底停止 + 清理临时节点）
+   * ★ 不清理 signalGainNode（持久化节点，始终连接到 masterGainNode）
    */
   function stopAllAudio() {
     fadeOutAndStopNoise();
 
+    // ★ 只停止 <audio> 元素，不断开 signalGainNode
+    if (taskAudioElement) {
+      taskAudioElement.pause();
+      taskAudioElement.currentTime = 0;
+    }
+    // ★ 不清理 taskAudioSourceNode（它是持久化的，只创建一次）
+    // 如果清理，下次 playTaskAudioFile() 时会报错
+
+    // 兼容旧代码：停止旧 taskSource（如有）
     if (taskSource) {
       try { taskSource.stop(); } catch (e) { /* ignore */ }
       taskSource.disconnect();
       taskSource = null;
     }
-    if (signalGainNode) {
-      signalGainNode.disconnect();
-      signalGainNode = null;
-    }
+    // ★ 不断开 signalGainNode！它应该持久化
+    // if (signalGainNode) {
+    //   signalGainNode.disconnect();
+    //   signalGainNode = null;
+    // }
 
     if ('speechSynthesis' in window) {
       speechSynthesis.cancel();
@@ -486,6 +578,20 @@ const AudioProcessor = (function () {
     return isPlaying;
   }
 
+  /**
+   * ★ 快捷接口：通过音频文件路径混合播放（配合 MATERIALS 使用）
+   *
+   * 等价于 playMixedAudio(null, snr, audioFilePath)，
+   * 避免调用方需要区分 TTS / 文件两种模式。
+   *
+   * @param {string} audioFilePath - 音频文件路径（如 'assets/audio/M8_ba_A.mp4'）
+   * @param {number} snr - 信噪比（dB）
+   * @returns {Promise<void>}
+   */
+  async function playMixedAudioFile(audioFilePath, snr) {
+    return playMixedAudio(null, snr, audioFilePath);
+  }
+
   // ==================== 公共 API ====================
   return {
     initAudioContext,
@@ -493,13 +599,14 @@ const AudioProcessor = (function () {
     setNoiseLevel,
     stopAllAudio,
     playMixedAudio,
-    playMixedAudioAt,    // ★ 新增：支持 SOA 延迟的定时播放
+    playMixedAudioFile,  // ★ 新增：通过文件路径播放（配合 MATERIALS）
+    playMixedAudioAt,    // ★ SOA 延迟播放
     playPreviewMixed,
     playTaskAudio,
     playTaskAudioFile,
     getAudioContext,
     isAudioPlaying,
-    // 向后兼容：保留 VIDEO_FILES 和 AUDIO_FILES 引用
+    // 向后兼容
     get VIDEO_FILES() { return Config.VIDEO_FILES; },
     get AUDIO_FILES() { return Config.AUDIO_FILES; },
     get NOISE_FILE() { return Config.NOISE.white; }

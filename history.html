@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>历史记录 - 视听语音整合训练系统</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#2563eb',
+            secondary: '#7c3aed',
+            success: '#059669',
+            warning: '#d97706',
+            danger: '#dc2626',
+          },
+          fontSize: {
+            'patient': ['1.25rem', { lineHeight: '1.8' }],
+            'patient-lg': ['1.5rem', { lineHeight: '2' }],
+          }
+        }
+      }
+    }
+  </script>
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    body { font-size: 17px; }
+    .screen { display:block; }
+  </style>
+</head>
+<body class="bg-slate-100 min-h-screen">
+
+<!-- ================================================================
+  历史记录页面（独立页面）
+================================================================ -->
+<div class="container mx-auto px-4 py-6 max-w-6xl">
+  <div class="bg-white rounded-2xl shadow-xl p-8">
+    <div class="flex items-center justify-between mb-6">
+      <h2 class="text-2xl font-bold text-gray-800">📁 历史记录</h2>
+      <div class="flex gap-3">
+        <button onclick="DataManager.exportToJSON()" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-sm">导出JSON</button>
+        <button onclick="DataManager.exportToCSV()" class="px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 text-sm">导出CSV</button>
+        <a href="index.html" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-sm">← 返回首页</a>
+      </div>
+    </div>
+    <div id="historyContent" class="text-center py-8 text-gray-400">暂无历史记录</div>
+  </div>
+</div>
+
+
+<!-- JS加载 -->
+<script src="config/constants.js"></script>
+<script src="js/uiHelper.js"></script>
+<script src="js/core/Staircase.js"></script>
+<script src="js/core/EventLogger.js"></script>
+<script src="js/audioProcessor.js"></script>
+<script src="js/psychometric.js"></script>
+<script src="js/dataManager.js"></script>
+<script src="modules/module1.js"></script>
+<script src="modules/module2.js"></script>
+<script src="modules/module3.js"></script>
+<script src="modules/module4.js"></script>
+<script src="js/app.js"></script>
+
+<script>
+  // 页面加载时自动加载历史记录
+  window.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => {
+      const hc = document.getElementById('historyContent');
+      if (hc && typeof DataManager !== 'undefined') {
+        hc.innerHTML = DataManager.generateHistoryHTML();
+      }
+    }, 300);
+  });
+</script>
+
+</body>
+</html>

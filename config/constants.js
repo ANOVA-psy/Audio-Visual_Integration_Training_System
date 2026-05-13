@@ -14,30 +14,59 @@ const Config = (function () {
 
   /** @type {Object<string, string>} */
   const NOISE = {
-    white: 'assets/audio/[白噪声] 纯白噪音：轻松的学习音乐，脑力，集中注意力音乐_音频.mp4'
+    // 使用 WAV 格式的白噪音（如果存在），否则使用合成噪音
+    white: 'assets/audio/white_noise.wav',
+    // 备用：使用 MP4 格式（如果存在）
+    whiteMp4: 'assets/audio/[白噪声] 纯白噪音：轻松的学习音乐，脑力，集中注意力音乐_音频.mp4'
   };
 
-  /** @type {string[]} */
-  const AUDIO_FILES = [
-    'assets/audio/10万黑猪治沙？假！派科学家去养鸡治沙？这是真的！【主播说三农】_音频.mp4',
-    'assets/audio/少吃水果可以少生很多病？？啊？这又是整哪出？！【主播说三农】_音频.mp4'
+  /**
+   * 每个材料对象包含：
+   *   video   - 视频文件路径
+   *   audio   - 对应音频文件路径（文件名 = 视频名 + _A）
+   *   label   - 显示标签（音节）
+   *   choices - 四选一选项
+   * @type {Array<{video:string, audio:string, label:string, choices:string[]}>}
+   */
+  const MATERIALS = [
+    {
+      video:   'assets/video/M8_ba.mp4',
+      audio:   'assets/audio/M8_ba_A.mp4',
+      label:   'ba',
+      choices: ['ba', 'da', 'ga', 'ma']
+    },
+    {
+      video:   'assets/video/M8_da.mp4',
+      audio:   'assets/audio/M8_da_A.mp4',
+      label:   'da',
+      choices: ['ba', 'da', 'ga', 'na']
+    },
+    {
+      video:   'assets/video/M8_ga.mp4',
+      audio:   'assets/audio/M8_ga_A.mp4',
+      label:   'ga',
+      choices: ['ba', 'da', 'ga', 'ka']
+    }
   ];
 
-  /** @type {string[]} */
-  const VIDEO_FILES = [
-    'assets/video/10万黑猪治沙？假！派科学家去养鸡治沙？这是真的！【主播说三农】_视频.mp4',
-    'assets/video/少吃水果可以少生很多病？？啊？这又是整哪出？！【主播说三农】_视频.mp4'
-  ];
+  /** 向后兼容：VIDEO_FILES / AUDIO_FILES 保留（模块内部可能还在用） */
+  const VIDEO_FILES = MATERIALS.map(m => m.video);
+  const AUDIO_FILES = MATERIALS.map(m => m.audio);
+
+  /** 词语库：从 MATERIALS 自动生成，供模块使用 */
+  const WORD_BANK = MATERIALS.map(m => ({
+    word:    m.label,
+    choices: m.choices,
+    video:   m.video,
+    audio:   m.audio
+  }));
 
   // ==================== 功能一：SNR 档位 ====================
-  // 7 档，覆盖 -18 dB ~ +9 dB（原始方案），当前简化版使用 [-12, +6]
-  // 如需扩展到 7 档，取消注释即可
+  /** @type {number[]} 全部可选 SNR 级别（dB）- 从容易到难（从大到小） */
+  const SNR_ALL = [9, 6, 3, 0, -3, -6, -9, -12, -18];
 
-  /** @type {number[]} 全部可选 SNR 级别（dB） */
-  const SNR_ALL = [-18, -12, -9, -6, -3, 0, 3, 6, 9];
-
-  /** @type {number[]} 默认启用的 SNR 级别（dB） */
-  const SNR_DEFAULT = [-12, -9, -6, -3, 0, 3, 6];
+  /** @type {number[]} 默认启用的 SNR 级别（dB）- 从容易到难 */
+  const SNR_DEFAULT = [6, 3, 0, -3, -6, -9, -12];
 
   /** @type {number} SNR 步进值（自适应算法用） */
   const SNR_STEP = 3;
@@ -49,7 +78,6 @@ const Config = (function () {
   const SNR_MAX = 9;
 
   // ==================== 功能二：口型模糊度 ====================
-
   /** @type {number[]} 模糊度级别（%），0=清晰 */
   const BLUR_ALL = [0, 10, 20, 30, 40, 50, 60];
 
@@ -60,8 +88,6 @@ const Config = (function () {
   const BLUR_CSS_FACTOR = 0.5;
 
   // ==================== 功能三：视听 SOA ====================
-  // 11 档，步长 100ms，覆盖 -300 ~ +300ms
-
   /** @type {number[]} SOA 级别（ms），负值=声音提前，正值=画面提前 */
   const SOA_ALL = [-300, -200, -100, 0, 100, 200, 300];
 
@@ -78,27 +104,10 @@ const Config = (function () {
   const SOA_MAX = 300;
 
   // ==================== 功能四：注意条件 ====================
-
   /** @type {string[]} */
   const ATTENTION_CONDITIONS = ['single', 'dual'];
 
-  // ==================== 词语库 ====================
-  // 统一词语库，4 个模块共享（避免每个模块重复定义）
-
-  /** @type {Array<{word: string, choices: string[]}>} */
-  const WORD_BANK = [
-    { word: '黑猪', choices: ['黑猪', '白猪', '黄猪', '灰猪'] },
-    { word: '治沙', choices: ['治沙', '种树', '挖沙', '运沙'] },
-    { word: '科学家', choices: ['科学家', '农民', '老师', '医生'] },
-    { word: '养鸡', choices: ['养鸡', '养猪', '养牛', '养羊'] },
-    { word: '水果', choices: ['水果', '蔬菜', '肉类', '粮食'] },
-    { word: '生病', choices: ['生病', '健康', '长寿', '年轻'] },
-    { word: '少吃', choices: ['少吃', '多吃', '不吃', '只吃'] },
-    { word: '真的', choices: ['真的', '假的', '也许', '可能'] }
-  ];
-
   // ==================== 心理物理拟合参数 ====================
-
   /** @type {number} 猜测率（4 选 1） */
   const PSY_GAMMA = 0.25;
 
@@ -109,7 +118,6 @@ const Config = (function () {
   const PSY_CRITERION = 0.80;
 
   // ==================== 自适应算法参数 ====================
-
   /** @type {number} 阶梯法：连续答错次数触发升级（变易） */
   const ADAPTIVE_UP = 1;
 
@@ -120,26 +128,28 @@ const Config = (function () {
   const ADAPTIVE_MAX_REVERSALS = 8;
 
   /** @type {number} 初始 SNR（自适应起点） */
-  const ADAPTIVE_START_SNR = 0;
+  const ADAPTIVE_START_SNR = 6;  // 从容易开始（6 dB）
 
   // ==================== 实验流程参数 ====================
-
   /** @type {number} 每个条件默认重复次数 */
   const DEFAULT_REPETITIONS = 3;
 
   /** @type {number} 反应超时时间（ms） */
   const RESPONSE_TIMEOUT = 10000;
 
-  /** @type {number} 试次间间隔（ms） */
-  const ITI = 1500;
+  /**
+   * 试次间间隔（ms）
+   * 反馈显示后延迟此时间再开始下一个试次
+   * 设为 800ms 使病人能看清反馈但不会等待太久
+   */
+  const ITI = 800;
 
   /** @type {number} 有效反应时上限（ms），超出视为异常值 */
   const RT_CEIL = 10000;
 
   // ==================== 音频参数 ====================
-
-  /** @type {number} 语音信号增益 */
-  const SIGNAL_GAIN = 0.5;
+  /** @type {number} 语音信号增益 - 提高至 1.0 确保信号可听 */
+  const SIGNAL_GAIN = 1.0;
 
   /** @type {number} 噪音增益上限倍率（防止噪音过大） */
   const NOISE_GAIN_CLAMP = 3.0;
@@ -154,6 +164,7 @@ const Config = (function () {
   return {
     // 资源
     NOISE,
+    MATERIALS,
     AUDIO_FILES,
     VIDEO_FILES,
 

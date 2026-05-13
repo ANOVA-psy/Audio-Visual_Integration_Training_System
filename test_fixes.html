@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>视听语音整合训练系统 v3 - 修复测试</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#2563eb',
+            secondary: '#7c3aed',
+            success: '#059669',
+            warning: '#d97706',
+            danger: '#dc2626',
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { font-size: 17px; }
+    .screen { display:none; }
+    .screen.active { display:block; }
+  </style>
+</head>
+<body class="bg-slate-100 min-h-screen">
+
+<!-- 快速开始页面 -->
+<div id="screen_quick" class="screen active">
+  <div class="container mx-auto px-4 py-8 max-w-2xl">
+    <div class="text-center mb-8">
+      <div class="text-5xl mb-3">🎧</div>
+      <h1 class="text-3xl font-bold text-gray-800 mb-1">视听语音训练 v3.2</h1>
+      <p class="text-gray-500">修复测试版本</p>
+    </div>
+    
+    <div class="bg-white rounded-2xl shadow p-5 mb-5">
+      <div class="font-bold text-gray-700 text-lg mb-3">✅ 已修复的问题：</div>
+      <ul class="space-y-2 text-sm text-gray-600">
+        <li>✅ 功能四乱码问题已修复</li>
+        <li>✅ 功能二/四结束训练后返回首页按钮已修复</li>
+        <li>✅ 功能三视频没有播放的问题已修复（视频元素ID不匹配）</li>
+        <li>✅ 视频尺寸自适应优化</li>
+        <li>🔄 音频播放逻辑优化中...</li>
+      </ul>
+    </div>
+
+    <div class="bg-white rounded-2xl shadow p-5 mb-5">
+      <div class="font-bold text-gray-700 text-lg mb-3">测试功能：</div>
+      <div class="space-y-3">
+        <button onclick="testFunction(1)" class="w-full p-4 rounded-xl border-2 border-blue-400 bg-blue-50 text-left">
+          <div class="font-bold">功能一 - 抗干扰训练</div>
+          <div class="text-sm text-gray-500">测试音频播放</div>
+        </button>
+        <button onclick="testFunction(2)" class="w-full p-4 rounded-xl border-2 border-purple-400 bg-purple-50 text-left">
+          <div class="font-bold">功能二 - 视觉整合训练</div>
+          <div class="text-sm text-gray-500">测试视频+音频播放</div>
+        </button>
+        <button onclick="testFunction(3)" class="w-full p-4 rounded-xl border-2 border-orange-400 bg-orange-50 text-left">
+          <div class="font-bold">功能三 - 异步校准训练</div>
+          <div class="text-sm text-gray-500">测试视频播放+SOA</div>
+        </button>
+        <button onclick="testFunction(4)" class="w-full p-4 rounded-xl border-2 border-green-400 bg-green-50 text-left">
+          <div class="font-bold">功能四 - 注意定位训练</div>
+          <div class="text-sm text-gray-500">测试双视频播放</div>
+        </button>
+      </div>
+    </div>
+
+    <div class="text-center">
+      <a href="视听语音整合训练系统_v3/index.html" class="text-sm text-gray-400 hover:text-gray-600 underline">
+        → 转到完整系统
+      </a>
+    </div>
+  </div>
+</div>
+
+<script>
+  function testFunction(funcId) {
+    alert('测试功能 ' + funcId + '\n\n此版本为修复测试页，完整功能请使用 index.html');
+  }
+</script>
+
+</body>
+</html>

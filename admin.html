@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>管理员设置 - 视听语音整合训练系统</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#2563eb',
+            secondary: '#7c3aed',
+            success: '#059669',
+            warning: '#d97706',
+            danger: '#dc2626',
+          },
+          fontSize: {
+            'patient': ['1.25rem', { lineHeight: '1.8' }],
+            'patient-lg': ['1.5rem', { lineHeight: '2' }],
+          }
+        }
+      }
+    }
+  </script>
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    body { font-size: 17px; }
+    .patient-btn {
+      min-height: 3.5rem;
+      font-size: 1.2rem;
+      font-weight: 700;
+      border-radius: 1rem;
+      transition: all .15s;
+      cursor: pointer;
+    }
+    .patient-btn:active { transform: scale(.97); }
+    .choice-btn {
+      transition: background .1s, border-color .1s;
+    }
+    .choice-btn:not(:disabled):hover {
+      background: #eff6ff;
+      border-color: #3b82f6;
+    }
+    .choice-btn.correct  { background:#d1fae5; border-color:#059669; color:#065f46; }
+    .choice-btn.wrong    { background:#fee2e2; border-color:#dc2626; color:#991b1b; }
+    .phase-card-pre   { border-color:#6366f1; }
+    .phase-card-pre.active   { background:#eef2ff; border-color:#6366f1; }
+    .phase-card-train { border-color:#2563eb; }
+    .phase-card-train.active { background:#eff6ff; border-color:#2563eb; }
+    .phase-card-post  { border-color:#059669; }
+    .phase-card-post.active  { background:#ecfdf5; border-color:#059669; }
+    @keyframes pulse-ring {
+      0%   { box-shadow: 0 0 0 0 rgba(37,99,235,.4); }
+      70%  { box-shadow: 0 0 0 18px rgba(37,99,235,0); }
+      100% { box-shadow: 0 0 0 0 rgba(37,99,235,0); }
+    }
+    .play-pulse { animation: pulse-ring 1.5s infinite; }
+    .step-dot {
+      width:2rem; height:2rem;
+      border-radius:50%;
+      display:flex; align-items:center; justify-content:center;
+      font-size:.9rem; font-weight:700;
+      flex-shrink:0;
+    }
+    .step-active  { background:#2563eb; color:#fff; }
+    .step-done    { background:#059669; color:#fff; }
+    .step-pending { background:#e5e7eb; color:#6b7280; }
+    .screen { display:none; }
+    .screen.active { display:block; }
+  </style>
+</head>
+<body class="bg-slate-100 min-h-screen">
+
+<!-- ================================================================
+  屏幕1：管理员主菜单
+================================================================ -->
+<div id="screen_menu" class="screen active">
+  <div class="container mx-auto px-4 py-8 max-w-5xl">
+    <div class="bg-white rounded-2xl shadow-xl p-8">
+      <div class="text-center mb-6">
+        <h1 class="text-2xl font-bold text-gray-800 mb-1">⚙️ 管理员设置</h1>
+        <p class="text-gray-400 text-sm">v3.0 · 完整实验配置</p>
+      </div>
+
+      <!-- 被试信息 -->
+      <div class="grid grid-cols-2 gap-4 mb-6">
+        <div>
+          <label class="block text-sm font-medium text-gray-600 mb-1">被试编号</label>
+          <input type="text" id="subjectId" placeholder="例：S001" value="P001"
+            class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary focus:outline-none text-lg">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-600 mb-1">实验日期</label>
+          <input type="date" id="expDate"
+            class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary focus:outline-none">
+        </div>
+      </div>
+
+      <!-- 实验阶段 -->
+      <div class="mb-6">
+        <label class="block text-sm font-medium text-gray-600 mb-2">选择实验阶段</label>
+        <div class="grid grid-cols-3 gap-3">
+          <button onclick="selectPhase('pre')" id="phase_pre" class="phase-btn px-4 py-3 rounded-xl border-2 border-gray-200 text-center hover:border-primary transition-all">
+            <div class="text-2xl mb-1">📊</div>
+            <div class="font-bold text-sm">训练前测试</div>
+            <div class="text-xs text-gray-400">基线阈值测定</div>
+          </button>
+          <button onclick="selectPhase('train')" id="phase_train" class="phase-btn px-4 py-3 rounded-xl border-2 border-primary bg-blue-50 text-center active">
+            <div class="text-2xl mb-1">🏋️</div>
+            <div class="font-bold text-sm text-primary">训练阶段</div>
+            <div class="text-xs text-blue-400">最高阈值重复训练</div>
+          </button>
+          <button onclick="selectPhase('post')" id="phase_post" class="phase-btn px-4 py-3 rounded-xl border-2 border-gray-200 text-center hover:border-primary transition-all">
+            <div class="text-2xl mb-1">📈</div>
+            <div class="font-bold text-sm">训练后测试</div>
+            <div class="text-xs text-gray-400">效果评估</div>
+          </button>
+        </div>
+      </div>
+
+      <!-- 功能选择 -->
+      <div class="mb-6">
+        <label class="block text-sm font-medium text-gray-600 mb-2">选择功能模块</label>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <button onclick="selectFunc(1)" id="func1" class="func-btn p-4 rounded-xl border-2 border-primary bg-blue-50 text-center">
+            <div class="text-3xl mb-1">🎯</div>
+            <div class="font-bold text-sm">功能一</div>
+            <div class="text-xs text-gray-500">抗干扰训练</div>
+            <div class="text-xs text-gray-400 mt-1">纯音频 + 噪音</div>
+          </button>
+          <button onclick="selectFunc(2)" id="func2" class="func-btn p-4 rounded-xl border-2 border-gray-200 text-center hover:border-primary transition-all">
+            <div class="text-3xl mb-1">👁️</div>
+            <div class="font-bold text-sm">功能二</div>
+            <div class="text-xs text-gray-500">视觉整合训练</div>
+            <div class="text-xs text-gray-400 mt-1">口型 + SNR + 模糊度</div>
+          </button>
+          <button onclick="selectFunc(3)" id="func3" class="func-btn p-4 rounded-xl border-2 border-gray-200 text-center hover:border-primary transition-all">
+            <div class="text-3xl mb-1">⏱️</div>
+            <div class="font-bold text-sm">功能三</div>
+            <div class="text-xs text-gray-500">异步校准训练</div>
+            <div class="text-xs text-gray-400 mt-1">双视频 SOA</div>
+          </button>
+          <button onclick="selectFunc(4)" id="func4" class="func-btn p-4 rounded-xl border-2 border-gray-200 text-center hover:border-primary transition-all">
+            <div class="text-3xl mb-1">🧠</div>
+            <div class="font-bold text-sm">功能四</div>
+            <div class="text-xs text-gray-500">注意定位训练</div>
+            <div class="text-xs text-gray-400 mt-1">双说话人竞争</div>
+          </button>
+        </div>
+      </div>
+
+      <!-- 配置摘要 -->
+      <div id="configSummary" class="p-4 bg-blue-50 rounded-xl mb-6 text-sm text-blue-700">
+        📋 当前配置：<span id="cfgText">功能一 | 训练中 | 被试 P001</span>
+      </div>
+
+      <!-- 操作按钮 -->
+      <div class="grid grid-cols-2 gap-4">
+        <button onclick="goToPreparation()" class="px-8 py-4 bg-primary hover:bg-blue-600 text-white text-xl font-bold rounded-xl shadow-lg transition-all">
+          ⚙️ 进入材料准备
+        </button>
+        <a href="history.html" class="inline-block px-8 py-4 bg-gray-500 hover:bg-gray-600 text-white text-xl font-bold rounded-xl shadow-lg transition-all text-center">
+          📁 历史记录
+        </a>
+      </div>
+      <div class="text-center mt-4">
+        <a href="index.html" class="text-sm text-gray-400 underline hover:text-gray-600">← 返回快速开始</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ================================================================
+  屏幕2：材料准备
+================================================================ -->
+<div id="screen_prep" class="screen">
+  <div class="container mx-auto px-4 py-6 max-w-6xl">
+    <div class="flex items-center justify-between mb-6">
+      <div class="flex items-center gap-4">
+        <button onclick="goToMenu()" class="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300 text-sm">← 返回菜单</button>
+        <div>
+          <h2 class="text-xl font-bold text-gray-800" id="prepTitle">材料准备 · 功能一</h2>
+          <p class="text-xs text-gray-500" id="prepSubtitle">训练中阶段</p>
+        </div>
+      </div>
+      <div id="phaseIndicator" class="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg text-sm font-medium">训练中</div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <!-- 左：变量控制 -->
+      <div class="bg-white rounded-2xl shadow-xl p-6">
+        <h3 class="font-bold text-gray-800 mb-4 flex items-center gap-2"><span>⚙️</span> 实验变量设置</h3>
+
+        <!-- SNR变量 -->
+        <div id="varSNR" class="mb-5 p-4 bg-blue-50 rounded-xl">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+              <input type="checkbox" id="enSNR" checked class="w-4 h-4">
+              <span class="font-bold text-blue-800">🔊 SNR（信噪比）</span>
+            </div>
+            <select id="snrMode" onchange="updateSNRSettings()" class="text-sm px-2 py-1 rounded border">
+              <option value="adaptive">自适应 (1-up/3-down)</option>
+              <option value="fixed">固定阈值测试</option>
+              <option value="combinatorial">组合遍历</option>
+            </select>
+          </div>
+          <div class="grid grid-cols-7 gap-1 mb-2">
+            <label class="text-center cursor-pointer"><input type="checkbox" class="snr-lvl w-4 h-4" value="6"><br><span class="text-xs">+6</span></label>
+            <label class="text-center cursor-pointer"><input type="checkbox" class="snr-lvl w-4 h-4" value="3"><br><span class="text-xs">+3</span></label>
+            <label class="text-center cursor-pointer"><input type="checkbox" class="snr-lvl w-4 h-4" value="0" checked><br><span class="text-xs">0</span></label>
+            <label class="text-center cursor-pointer"><input type="checkbox" class="snr-lvl w-4 h-4" value="-3" checked><br><span class="text-xs">-3</span></label>
+            <label class="text-center cursor-pointer"><input type="checkbox" class="snr-lvl w-4 h-4" value="-6" checked><br><span class="text-xs">-6</span></label>
+            <label class="text-center cursor-pointer"><input type="checkbox" class="snr-lvl w-4 h-4" value="-9"><br><span class="text-xs">-9</span></label>
+            <label class="text-center cursor-pointer"><input type="checkbox" class="snr-lvl w-4 h-4" value="-12"><br><span class="text-xs">-12</span></label>
+          </div>
+          <div class="flex gap-2 text-xs text-blue-600 items-center flex-wrap">
+            <span>顺序：</span>
+            <button onclick="setOrder('snr','random')" id="snrOrderR" class="px-2 py-0.5 rounded bg-blue-200 font-medium">🔀随机</button>
+            <button onclick="setOrder('snr','seq')" id="snrOrderS" class="px-2 py-0.5 rounded bg-gray-100">📊顺序</button>
+            <span class="ml-2">重复：<input type="number" id="snrReps" value="3" min="1" max="20" class="w-12 px-1 border rounded text-center">次/档</span>
+          </div>
+          <div id="adaptiveInfo" class="mt-2 p-2 bg-blue-100 rounded text-xs text-blue-700">
+            💡 <strong>1-up/3-down算法：</strong>连续答对3题→SNR↓1档（变难）｜答错1题→SNR↑1档（变易）｜反转8次后停止
+          </div>
+        </div>
+
+        <!-- 模糊度变量 -->
+        <div id="varBlur" class="mb-5 p-4 bg-purple-50 rounded-xl hidden">
+          <div class="flex items-center gap-2 mb-2">
+            <input type="checkbox" id="enBlur" checked class="w-4 h-4">
+            <span class="font-bold text-purple-800">🎭 模糊度（像素化马赛克）</span>
+          </div>
+          <div class="grid grid-cols-7 gap-1 mb-2">
+            <label class="text-center cursor-pointer"><input type="checkbox" class="blur-lvl w-4 h-4" value="0" checked><br><span class="text-xs">0%</span><br><span class="text-xs text-green-600">清晰</span></label>
+            <label class="text-center cursor-pointer"><input type="checkbox" class="blur-lvl w-4 h-4" value="10"><br><span class="text-xs">10%</span></label>
+            <label class="text-center cursor-pointer"><input type="checkbox" class="blur-lvl w-4 h-4" value="20"><br><span class="text-xs">20%</span></label>
+            <label class="text-center cursor-pointer"><input type="checkbox" class="blur-lvl w-4 h-4" value="30"><br><span class="text-xs">30%</span></label>
+            <label class="text-center cursor-pointer"><input type="checkbox" class="blur-lvl w-4 h-4" value="40"><br><span class="text-xs">40%</span></label>
+            <label class="text-center cursor-pointer"><input type="checkbox" class="blur-lvl w-4 h-4" value="50"><br><span class="text-xs">50%</span></label>
+            <label class="text-center cursor-pointer"><input type="checkbox" class="blur-lvl w-4 h-4" value="60"><br><span class="text-xs">60%</span><br><span class="text-xs text-red-500">极糊</span></label>
+          </div>
+          <div class="flex gap-2 text-xs text-purple-600 items-center flex-wrap">
+            <span>顺序：</span>
+            <button onclick="setOrder('blur','random')" id="blurOrderR" class="px-2 py-0.5 rounded bg-purple-200 font-medium">🔀随机</button>
+            <button onclick="setOrder('blur','seq')" id="blurOrderS" class="px-2 py-0.5 rounded bg-gray-100">📊顺序</button>
+            <span class="ml-2">重复：<input type="number" id="blurReps" value="3" min="1" max="20" class="w-12 px-1 border rounded text-center">次/档</span>
+          </div>
+        </div>
+
+        <!-- SOA变量 -->
+        <div id="varSOA" class="mb-5 p-4 bg-orange-50 rounded-xl hidden">
+          <div class="flex items-center gap-2 mb-2">
+            <input type="checkbox" id="enSOA" checked class="w-4 h-4">
+            <span class="font-bold text-orange-800">⏱️ 视听同步偏移 (SOA)</span>
+          </div>
+          <div class="grid grid-cols-7 gap-0.5 mb-2">
+            <label class="text-center cursor-pointer"><input type="checkbox" class="soa-lvl w-3 h-3" value="-300"><br><span class="text-xs">-300</span></label>
+            <label class="text-center cursor-pointer"><input type="checkbox" class="soa-lvl w-3 h-3" value="-200"><br><span class="text-xs">-200</span></label>
+            <label class="text-center cursor-pointer"><input type="checkbox" class="soa-lvl w-3 h-3" value="-100"><br><span class="text-xs">-100</span></label>
+            <label class="text-center cursor-pointer bg-orange-200 rounded"><input type="checkbox" class="soa-lvl w-3 h-3" value="0" checked><br><span class="text-xs text-orange-600 font-bold">0</span></label>
+            <label class="text-center cursor-pointer"><input type="checkbox" class="soa-lvl w-3 h-3" value="100"><br><span class="text-xs">+100</span></label>
+            <label class="text-center cursor-pointer"><input type="checkbox" class="soa-lvl w-3 h-3" value="200"><br><span class="text-xs">+200</span></label>
+            <label class="text-center cursor-pointer"><input type="checkbox" class="soa-lvl w-3 h-3" value="300"><br><span class="text-xs">+300</span></label>
+          </div>
+          <div class="flex gap-2 text-xs text-orange-600 items-center flex-wrap">
+            <span>顺序：</span>
+            <button onclick="setOrder('soa','random')" id="soaOrderR" class="px-2 py-0.5 rounded bg-orange-200 font-medium">🔀随机</button>
+            <button onclick="setOrder('soa','seq')" id="soaOrderS" class="px-2 py-0.5 rounded bg-gray-100">📊顺序</button>
+            <span class="ml-2">重复：<input type="number" id="soaReps" value="3" min="1" max="20" class="w-12 px-1 border rounded text-center">次/档</span>
+          </div>
+        </div>
+
+        <!-- 注意条件 -->
+        <div id="varAtt" class="mb-5 p-4 bg-green-50 rounded-xl hidden">
+          <div class="flex items-center gap-2 mb-2">
+            <input type="checkbox" id="enAtt" checked class="w-4 h-4">
+            <span class="font-bold text-green-800">🧠 注意条件</span>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <label class="flex items-center gap-2 p-2 bg-white rounded-lg cursor-pointer border border-green-200">
+              <input type="checkbox" class="att-lvl w-4 h-4" value="single" checked>
+              <span class="text-sm">🎤 单说话人</span>
+            </label>
+            <label class="flex items-center gap-2 p-2 bg-white rounded-lg cursor-pointer border border-green-200">
+              <input type="checkbox" class="att-lvl w-4 h-4" value="dual" checked>
+              <span class="text-sm">🎭 双说话人竞争</span>
+            </label>
+          </div>
+          <div class="flex gap-2 text-xs text-green-600 mt-2 items-center">
+            <span>顺序：</span>
+            <button onclick="setOrder('att','random')" id="attOrderR" class="px-2 py-0.5 rounded bg-green-200 font-medium">🔀随机</button>
+            <button onclick="setOrder('att','seq')" id="attOrderS" class="px-2 py-0.5 rounded bg-gray-100">📊顺序</button>
+          </div>
+        </div>
+
+        <!-- 试次统计 -->
+        <div class="mt-4 p-3 bg-gray-100 rounded-xl text-sm">
+          <div class="font-medium text-gray-700 mb-1">📋 试次统计：<span id="previewTotal" class="text-primary font-bold">0</span> 个试次</div>
+          <div id="summaryText" class="text-xs text-gray-500">请检查上方设置</div>
+        </div>
+      </div>
+
+      <!-- 右：预览 + 生成 -->
+      <div class="space-y-4">
+        <!-- 材料预览 -->
+        <div class="bg-white rounded-2xl shadow-xl p-6">
+          <h3 class="font-bold text-gray-800 mb-3 flex items-center gap-2"><span>👁️</span> 材料预览</h3>
+
+          <!-- 功能1预览 -->
+          <div id="preview1" class="text-center py-6">
+            <div class="text-6xl mb-3">🔊</div>
+            <div class="text-gray-500 text-sm">功能一：纯音频 + 噪音（无视频）</div>
+            <div class="mt-4 p-3 bg-blue-50 rounded-lg text-xs text-blue-600">预览不同SNR的噪音混合效果</div>
+            <input type="range" id="previewSNRSlider" min="-12" max="6" step="3" value="0" class="w-full mt-3">
+            <div class="flex justify-between text-xs text-gray-400 mt-1">
+              <span>-12dB</span><span>-6</span><span>0</span><span>+3</span><span>+6dB</span>
+            </div>
+            <div class="mt-2 text-lg font-bold text-blue-600" id="previewSNRText">SNR: 0 dB</div>
+            <button onclick="playPreview()" class="mt-3 px-6 py-2 bg-primary text-white rounded-lg text-sm hover:bg-blue-600">▶️ 播放预览</button>
+          </div>
+
+          <!-- 功能2预览 - 添加SNR选择 -->
+          <div id="preview2" class="hidden">
+            <div class="relative rounded-xl overflow-hidden bg-gray-900" style="aspect-ratio:16/9;">
+              <video id="previewVideo" class="w-full h-full object-cover" muted playsinline>
+                <source id="previewSrc" src="" type="video/mp4">
+              </video>
+            </div>
+            <div class="mt-3 space-y-2">
+              <div>
+                <label class="text-xs text-gray-500">SNR（信噪比）：</label>
+                <input type="range" id="previewSNRSlider2" min="-12" max="6" step="3" value="0" class="w-full mt-1">
+                <div class="flex justify-between text-xs text-gray-400 mt-1">
+                  <span>-12dB</span><span>-6</span><span>0</span><span>+3</span><span>+6dB</span>
+                </div>
+                <div class="text-center mt-1"><span class="px-3 py-1 bg-blue-100 rounded text-blue-600 text-sm font-bold" id="previewSNRText2">SNR: 0 dB</span></div>
+              </div>
+              <div>
+                <label class="text-xs text-gray-500">马赛克模糊度：</label>
+                <input type="range" id="previewBlurSlider" min="0" max="60" step="5" value="0" class="w-full">
+              </div>
+            </div>
+            <button onclick="playPreview()" class="mt-3 w-full px-6 py-2 bg-primary text-white rounded-lg text-sm hover:bg-blue-600">▶️ 播放预览</button>
+          </div>
+
+          <!-- 功能3预览 - 单视频 + SNR + 模糊度 + SOA -->
+          <div id="preview3" class="hidden">
+            <div class="relative rounded-xl overflow-hidden bg-gray-900 mx-auto" style="aspect-ratio:16/9; max-width:600px;">
+              <video id="previewVideo3" class="w-full h-full object-cover" muted playsinline>
+                <source id="previewSrc3" src="" type="video/mp4">
+              </video>
+              <div class="absolute bottom-1 left-1 bg-black/60 text-white text-xs px-1 rounded">预览视频</div>
+            </div>
+            <div class="mt-3 space-y-2">
+              <div>
+                <label class="text-xs text-gray-500">SNR（信噪比）：</label>
+                <input type="range" id="previewSNRSlider3" min="-12" max="6" step="3" value="0" class="w-full mt-1">
+                <div class="flex justify-between text-xs text-gray-400 mt-1">
+                  <span>-12dB</span><span>-6</span><span>0</span><span>+3</span><span>+6dB</span>
+                </div>
+                <div class="text-center mt-1"><span class="px-3 py-1 bg-blue-100 rounded text-blue-600 text-sm font-bold" id="previewSNRText3">SNR: 0 dB</span></div>
+              </div>
+              <div>
+                <label class="text-xs text-gray-500">模糊度（像素化）：</label>
+                <input type="range" id="previewBlurSlider3" min="0" max="60" step="5" value="0" class="w-full mt-1">
+                <div class="flex justify-between text-xs text-gray-400 mt-1">
+                  <span>0%（清晰）</span><span>20%</span><span>40%</span><span>60%（极糊）</span>
+                </div>
+                <div class="text-center mt-1"><span class="px-3 py-1 bg-purple-100 rounded text-purple-600 text-sm font-bold" id="previewBlurText3">模糊度: 0%</span></div>
+              </div>
+              <div>
+                <label class="text-xs text-gray-500">SOA（音视频延迟）：</label>
+                <input type="range" id="previewSOASlider" min="-300" max="300" step="50" value="0" class="w-full mt-1">
+                <div class="flex justify-between text-xs text-gray-400 mt-1">
+                  <span>-300ms</span><span>-150</span><span>0</span><span>+150</span><span>+300ms</span>
+                </div>
+                <div class="text-center mt-1"><span class="px-3 py-1 bg-orange-100 rounded text-orange-600 text-sm font-bold" id="prev3SOAText">SOA: 0 ms</span></div>
+              </div>
+            </div>
+            <button onclick="playPreview()" class="mt-3 w-full px-6 py-2 bg-primary text-white rounded-lg text-sm hover:bg-blue-600">▶️ 播放预览</button>
+          </div>
+
+          <!-- 功能4预览 - 添加SNR、注意条件、目标位置选择 -->
+          <div id="preview4" class="hidden">
+            <div class="grid grid-cols-2 gap-2">
+              <div class="relative rounded-lg overflow-hidden bg-gray-900" style="aspect-ratio:16/9;">
+                <video id="previewMain" class="w-full h-full object-cover" muted playsinline>
+                  <source id="previewMainSrc" src="" type="video/mp4">
+                </video>
+                <div id="previewTargetLabel" class="absolute top-1 left-1 bg-blue-600 text-white text-xs px-2 py-0.5 rounded">👤 目标（左）</div>
+              </div>
+              <div class="relative rounded-lg overflow-hidden bg-gray-900" style="aspect-ratio:16/9;">
+                <video id="previewDist" class="w-full h-full object-cover" muted playsinline>
+                  <source id="previewDistSrc" src="" type="video/mp4">
+                </video>
+                <div class="absolute top-1 right-1 bg-red-600 text-white text-xs px-2 py-0.5 rounded">🚫 干扰</div>
+              </div>
+            </div>
+            <div class="mt-3 space-y-2">
+              <div>
+                <label class="text-xs text-gray-500">SNR（信噪比）：</label>
+                <input type="range" id="previewSNRSlider4" min="-12" max="6" step="3" value="0" class="w-full mt-1">
+                <div class="flex justify-between text-xs text-gray-400 mt-1">
+                  <span>-12dB</span><span>-6</span><span>0</span><span>+3</span><span>+6dB</span>
+                </div>
+                <div class="text-center mt-1"><span class="px-3 py-1 bg-blue-100 rounded text-blue-600 text-sm font-bold" id="previewSNRText4">SNR: 0 dB</span></div>
+              </div>
+              <div>
+                <label class="text-xs text-gray-500">注意条件：</label>
+                <div class="flex gap-2 mt-1">
+                  <label class="flex items-center gap-1 text-sm">
+                    <input type="radio" name="previewAttCondition" value="single" checked>
+                    <span>单说话人</span>
+                  </label>
+                  <label class="flex items-center gap-1 text-sm">
+                    <input type="radio" name="previewAttCondition" value="dual">
+                    <span>双说话人竞争</span>
+                  </label>
+                </div>
+              </div>
+              <div>
+                <label class="text-xs text-gray-500">目标说话人位置：</label>
+                <div class="flex gap-2 mt-1">
+                  <label class="flex items-center gap-1 text-sm">
+                    <input type="radio" name="previewTargetSide" value="left" checked>
+                    <span>左侧</span>
+                  </label>
+                  <label class="flex items-center gap-1 text-sm">
+                    <input type="radio" name="previewTargetSide" value="right">
+                    <span>右侧</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+            <button onclick="playPreview()" class="mt-3 w-full px-6 py-2 bg-primary text-white rounded-lg text-sm hover:bg-blue-600">▶️ 播放预览</button>
+          </div>
+        </div>
+
+        <!-- 保存 & 生成按钮 -->
+        <div class="bg-white rounded-2xl shadow-xl p-6">
+          <h3 class="font-bold text-gray-800 mb-3">🚀 准备就绪</h3>
+          <div class="grid grid-cols-2 gap-3">
+            <button onclick="saveAdminSettings()" class="px-6 py-4 bg-blue-500 hover:bg-blue-600 text-white text-lg font-bold rounded-xl shadow-lg transition-all">
+              💾 保存设置
+            </button>
+            <button onclick="generateTrials()" class="px-6 py-4 bg-success hover:bg-emerald-600 text-white text-lg font-bold rounded-xl shadow-lg transition-all">
+              🔧 生成程序
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ================================================================
+  屏幕3：生成完成
+================================================================ -->
+<div id="screen_generate" class="screen">
+  <div class="container mx-auto px-4 py-8 max-w-2xl">
+    <div class="bg-white rounded-2xl shadow-xl p-8 text-center">
+      <div class="text-6xl mb-4">✅</div>
+      <h2 class="text-2xl font-bold text-gray-800 mb-2">准备完毕！</h2>
+      <p class="text-gray-500 mb-6">共 <span id="generateCount" class="text-primary font-bold text-xl">0</span> 道题目</p>
+
+      <div class="p-4 bg-gray-50 rounded-xl mb-4 text-left text-sm">
+        <ul id="expSettingsList" class="text-gray-600 space-y-1"></ul>
+      </div>
+      <div class="p-4 bg-blue-50 rounded-xl mb-6 text-left text-sm">
+        <ul id="expParamsList" class="text-blue-600 space-y-1"></ul>
+      </div>
+
+      <!-- 操作指南提示 -->
+      <div class="mb-6 p-4 bg-green-50 rounded-xl border border-green-200 text-left">
+        <div class="font-bold text-green-700 mb-2">📖 开始前提醒</div>
+        <div class="text-sm text-green-800 space-y-1">
+          <div>• 点击 <strong>▶️ 播放</strong> 按钮（或按键盘空格键）收听内容</div>
+          <div>• 听完后立即从 <strong>A/B/C/D</strong> 四个选项中选择您听到的内容</div>
+          <div>• 系统会立即告诉您答案是否正确，然后自动进入下一题</div>
+        </div>
+      </div>
+
+      <div class="flex gap-4 justify-center">
+        <button onclick="goToPreparation()" class="px-6 py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold rounded-xl">
+          ← 返回修改
+        </button>
+        <button onclick="startExperiment()" class="px-10 py-4 bg-success hover:bg-emerald-600 text-white text-xl font-bold rounded-xl shadow-lg">
+          ▶️ 开始训练
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ================================================================
+  JS加载（与index.html相同，确保功能一致）
+================================================================ -->
+<script src="config/constants.js"></script>
+<script src="js/uiHelper.js"></script>
+<script src="js/core/Staircase.js"></script>
+<script src="js/core/EventLogger.js"></script>
+<script src="js/audioProcessor.js"></script>
+<script src="js/psychometric.js"></script>
+<script src="js/dataManager.js"></script>
+<script src="js/adminSettings.js"></script>
+<script src="modules/module1.js"></script>
+<script src="modules/module2.js"></script>
+<script src="modules/module3.js"></script>
+<script src="modules/module4.js"></script>
+<script src="js/app.js"></script>
+
+<script>
+  // 默认显示管理员菜单（覆盖 app.js 中的 'quick'）
+  window.addEventListener('DOMContentLoaded', () => {
+    // 等待 app.js 初始化完成
+    setTimeout(() => {
+      UIHelper.showScreen('menu');
+    }, 100);
+  });
+</script>
+
+</body>
+</html>

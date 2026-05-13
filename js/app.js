@@ -1,27 +1,28 @@
 /**
- * 主应用逻辑
- * 负责：屏幕切换、状态管理、整合所有模块、修复原代码bug
+ * 主应用逻辑 v3.1
+ * - 修复：选项按钮点击播放后立即可用（无延迟）
+ * - 修复：提交答案后 UI 立即刷新（ITI 缩短 + 即时反馈渲染）
+ * - 新增：快速启动流程（病人界面）
+ * - 新增：视频/音频源与 MATERIALS 对应（每个试次使用对应材料的视频+音频）
  */
 
 (function() {
   'use strict';
-  
+
   // ==================== 全局状态 ====================
   const STATE = {
-    subjectId: 'S001',
-    phase: 'train', // pre/train/post
-    func: 1, // 1-4
-    snrMode: 'adaptive', // adaptive/fixed/combinatorial
-    
-    // 试次相关
+    subjectId: 'P001',
+    phase: 'train',
+    func: 1,
+    snrMode: 'adaptive',
+
     trialQueue: [],
     currentTrialIndex: 0,
     results: [],
     isPlaying: false,
     isWaitingForResponse: false,
     responseStartTime: null,
-    
-    // 自适应算法
+
     adaptive: {
       streak: 0,
       currentSNR: 0,
@@ -31,80 +32,314 @@
       maxReversals: 8,
       isRunning: false
     },
-    
-    // 音频
+
     audioContext: null,
     noiseBuffer: null,
-    
-    // 历史记录
     history: []
   };
-  
+
+  // ==================== 快速启动（病人界面） ====================
+
+  /**
+   * 快速启动：病人从快速界面选择阶段后进入引导页
+   * @param {'pre'|'train'|'post'} phase
+   */
+  window.quickStart = function(phase) {
+    STATE.phase = phase;
+    STATE.subjectId = document.getElementById('quickSubjectId')?.value || 'P001';
+
+    // 同步到管理员页被试ID
+    const adminSubjectId = document.getElementById('subjectId');
+    if (adminSubjectId) adminSubjectId.value = STATE.subjectId;
+
+    // 更新引导页内容
+    updateGuideScreen(phase);
+    UIHelper.showScreen('guide');
+  };
+
+  function updateGuideScreen(phase) {
+    const phaseInfo = {
+      pre:   { emoji:'📊', title:'训练前测试', desc:'了解您目前的听觉基础能力，没有对错之分，尽力作答即可', color:'indigo' },
+      train: { emoji:'🏋️', title:'训练阶段',   desc:'反复练习，逐步提升您的视听整合能力',                    color:'blue'   },
+      post:  { emoji:'📈', title:'训练后测试', desc:'检验训练效果，与训练前的结果进行对比',                    color:'green'  }
+    };
+    const info = phaseInfo[phase];
+
+    const guideEmoji  = document.getElementById('guideEmoji');
+    const guideTitle  = document.getElementById('guideTitle');
+    const guideDesc   = document.getElementById('guideDesc');
+    if (guideEmoji) guideEmoji.textContent = info.emoji;
+    if (guideTitle) guideTitle.textContent = info.title;
+    if (guideDesc)  guideDesc.textContent  = info.desc;
+
+    // 动态生成训练模块选择
+    renderModuleGuide(phase);
+  }
+
+  function renderModuleGuide(phase) {
+    const area = document.getElementById('moduleGuideArea');
+    if (!area) return;
+
+    // 根据阶段决定默认模块
+    // - pre / post 阶段：全部 4 个模块
+    // - train：全部模块
+    const modules = [
+      { id:1, emoji:'🎯', name:'听音识别',   desc:'在噪音中听辨音节',        color:'blue'   },
+      { id:2, emoji:'👁️', name:'口型辅助',   desc:'结合口型动作理解语音',    color:'purple' },
+      { id:3, emoji:'⏱️', name:'同步校准',   desc:'感知声音与口型的同步性',  color:'orange' },
+      { id:4, emoji:'🧠', name:'注意定位',   desc:'从多个说话人中定位目标',  color:'green'  }
+    ];
+
+    // 训练阶段默认推荐功能1
+    const recommendId = 1;
+
+    area.innerHTML = modules.map(m => `
+      <button onclick="quickSelectModule(${m.id})"
+        class="w-full p-4 rounded-2xl border-2 ${m.id === recommendId ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:border-blue-300'} text-left flex items-center gap-3 transition-all patient-btn">
+        <div class="text-3xl">${m.emoji}</div>
+        <div class="flex-1">
+          <div class="font-bold text-gray-800">${m.name}</div>
+          <div class="text-sm text-gray-500 font-normal">${m.desc}</div>
+        </div>
+        ${m.id === recommendId ? '<span class="text-xs bg-blue-500 text-white px-2 py-0.5 rounded-full">推荐</span>' : ''}
+        <div class="text-2xl text-gray-400">›</div>
+      </button>
+    `).join('');
+  }
+
+  /**
+   * 病人选择模块后 → 使用默认配置生成试次 → 直接进入实验
+   */
+  window.quickSelectModule = function(funcId) {
+    STATE.func = funcId;
+
+    // 同步管理员界面状态
+    selectFunc(funcId);
+    selectPhase(STATE.phase);
+
+    // 使用预设的快速配置（减少繁琐设置）
+    applyQuickConfig(funcId, STATE.phase);
+
+    // 生成试次
+    try {
+      UIHelper.showLoading('正在准备题目...');
+      const trials = generateTrialsForFunc(funcId);
+      if (trials.length === 0) {
+        UIHelper.hideLoading();
+        UIHelper.showNotification('生成试次失败，请联系工作人员', 'error');
+        return;
+      }
+
+      STATE.trialQueue = trials;
+      STATE.currentTrialIndex = 0;
+      STATE.results = [];
+
+      UIHelper.hideLoading();
+
+      // 直接跳到开始实验（跳过"生成完成"页）
+      startExperimentDirect();
+    } catch(e) {
+      console.error('[QuickStart] 生成失败:', e);
+      UIHelper.hideLoading();
+      UIHelper.showNotification('准备失败: ' + e.message, 'error');
+    }
+  };
+
+  /**
+   * 快速配置：根据功能和阶段应用合理默认值
+   */
+  function applyQuickConfig(funcId, phase) {
+    // 根据阶段调整试次规模
+    const reps = phase === 'train' ? 5 : 3;
+
+    // 勾选默认 SNR
+    document.querySelectorAll('.snr-lvl').forEach(cb => {
+      cb.checked = ['-6','-3','0','3'].includes(cb.value);
+    });
+
+    const snrRepsEl = document.getElementById('snrReps');
+    const blurRepsEl = document.getElementById('blurReps');
+    const soaRepsEl  = document.getElementById('soaReps');
+    if (snrRepsEl) snrRepsEl.value = reps;
+    if (blurRepsEl) blurRepsEl.value = reps;
+    if (soaRepsEl)  soaRepsEl.value = reps;
+
+    // 功能二默认模糊度
+    document.querySelectorAll('.blur-lvl').forEach(cb => {
+      cb.checked = ['0','20','40'].includes(cb.value);
+    });
+
+    // 功能三默认 SOA
+    document.querySelectorAll('.soa-lvl').forEach(cb => {
+      cb.checked = ['-100','0','100'].includes(cb.value);
+    });
+
+    // 功能四默认注意条件
+    document.querySelectorAll('.att-lvl').forEach(cb => {
+      cb.checked = true;
+    });
+  }
+
+  /**
+   * 从当前 checkbox 配置生成试次（内部辅助，不跳转）
+   */
+  function generateTrialsForFunc(funcId) {
+    const config = {
+      snrLevels:  getSelectedValues('.snr-lvl'),
+      blurLevels: getSelectedValues('.blur-lvl'),
+      soaLevels:  getSelectedValues('.soa-lvl'),
+      attLevels:  getSelectedValues('.att-lvl'),
+      repetitions: parseInt(document.getElementById('snrReps')?.value) || 3,
+      order: 'random'
+    };
+
+    if (funcId === 1) return Module1.generateTrialQueue(config);
+    if (funcId === 2) return Module2.generateTrialQueue(config);
+    if (funcId === 3) return Module3.generateTrialQueue(config);
+    if (funcId === 4) return Module4.generateTrialQueue(config);
+    return [];
+  }
+
+  /**
+   * 快速启动直接进入实验（绕过 generate 屏幕）
+   */
+  function startExperimentDirect() {
+    EventLogger.startSession({
+      subjectId: STATE.subjectId,
+      phase:     STATE.phase,
+      func:      STATE.func
+    });
+
+    UIHelper.showScreen('exp');
+    updateExperimentUI();
+    setupExperimentVideoSources();
+    startNextTrial();
+  }
+
   // ==================== 初始化 ====================
   document.addEventListener('DOMContentLoaded', () => {
-    console.log('视听语音整合训练系统 v3.0 - 初始化');
-    
-    // 初始化所有模块
+    console.log('视听语音整合训练系统 v3.1 - 初始化');
+
     Module1.init();
     Module2.init();
     Module3.init();
     Module4.init();
-    
-    // 设置日期
+
     const dateInput = document.getElementById('expDate');
-    if (dateInput) {
-      dateInput.value = UIHelper.formatDate();
-    }
-    
-    // 绑定事件
+    if (dateInput) dateInput.value = UIHelper.formatDate();
+
     bindEvents();
-    
-    // 显示主菜单
-    UIHelper.showScreen('menu');
-    
-    console.log('初始化完成 (Config ✓, Staircase ✓, EventLogger ✓)');
+
+    // 默认显示屏幕（支持 hash 导航 + 管理员页面覆盖）
+    const hash = window.location.hash.slice(1);
+    if (hash && ['quick','guide','menu','prep','generate','exp','results','history'].includes(hash)) {
+      UIHelper.showScreen(hash);
+    } else {
+      const defaultScreen = window.DEFAULT_SCREEN || 'quick';
+      UIHelper.showScreen(defaultScreen);
+    }
+
+    console.log('初始化完成');
   });
-  
+
   // ==================== 事件绑定 ====================
   function bindEvents() {
-    // 主菜单
     const subjectIdInput = document.getElementById('subjectId');
-    if (subjectIdInput) {
-      subjectIdInput.addEventListener('input', updateConfigSummary);
-    }
-    
-    // 键盘快捷键
-    document.addEventListener('keydown', handleKeyPress);
+    if (subjectIdInput) subjectIdInput.addEventListener('input', updateConfigSummary);
 
-    // ★ 实验材料设置变化时立即刷新试次统计
+    document.addEventListener('keydown', handleKeyPress);
     bindSettingChangeListeners();
+
+    // Hash 导航支持（浏览器前进/后退）
+    window.addEventListener('hashchange', handleHashChange);
+
+    // ★ 新增：预览界面滑块实时数值显示
+    bindPreviewSliderListeners();
+  }
+
+  /**
+   * 为预览界面的所有滑块添加 input 事件监听器
+   * 实现拖动滑块时实时更新显示的数值
+   */
+  function bindPreviewSliderListeners() {
+    // 功能1：SNR滑块
+    const snrSlider1 = document.getElementById('previewSNRSlider');
+    const snrText1 = document.getElementById('previewSNRText');
+    if (snrSlider1 && snrText1) {
+      snrSlider1.addEventListener('input', function() {
+        snrText1.textContent = `SNR: ${snrSlider1.value} dB`;
+      });
+    }
+
+    // 功能2：SNR滑块 + 模糊度滑块
+    const snrSlider2 = document.getElementById('previewSNRSlider2');
+    const snrText2 = document.getElementById('previewSNRText2');
+    if (snrSlider2 && snrText2) {
+      snrSlider2.addEventListener('input', function() {
+        snrText2.textContent = `SNR: ${snrSlider2.value} dB`;
+      });
+    }
+
+    const blurSlider2 = document.getElementById('previewBlurSlider');
+    if (blurSlider2) {
+      blurSlider2.addEventListener('input', function() {
+        // 更新功能2预览视频的模糊度
+        updateModule2Preview();
+      });
+    }
+
+    // 功能3：SNR滑块 + 模糊度滑块 + SOA滑块
+    const snrSlider3 = document.getElementById('previewSNRSlider3');
+    const snrText3 = document.getElementById('previewSNRText3');
+    if (snrSlider3 && snrText3) {
+      snrSlider3.addEventListener('input', function() {
+        snrText3.textContent = `SNR: ${snrSlider3.value} dB`;
+      });
+    }
+
+    const blurSlider3 = document.getElementById('previewBlurSlider3');
+    const blurText3 = document.getElementById('previewBlurText3');
+    if (blurSlider3 && blurText3) {
+      blurSlider3.addEventListener('input', function() {
+        blurText3.textContent = `模糊度: ${blurSlider3.value}%`;
+      });
+    }
+
+    const soaSlider3 = document.getElementById('previewSOASlider');
+    const soaText3 = document.getElementById('prev3SOAText');
+    if (soaSlider3 && soaText3) {
+      soaSlider3.addEventListener('input', function() {
+        const v = parseInt(soaSlider3.value);
+        soaText3.textContent = `SOA: ${v > 0 ? '+' : ''}${v} ms`;
+      });
+    }
+
+    // 功能4：SNR滑块
+    const snrSlider4 = document.getElementById('previewSNRSlider4');
+    const snrText4 = document.getElementById('previewSNRText4');
+    if (snrSlider4 && snrText4) {
+      snrSlider4.addEventListener('input', function() {
+        snrText4.textContent = `SNR: ${snrSlider4.value} dB`;
+      });
+    }
+
+    console.log('[bindEvents] 预览界面滑块监听器已绑定');
   }
 
   function bindSettingChangeListeners() {
-    // SNR复选框变化
     document.addEventListener('change', function(e) {
-      if (e.target.matches('.snr-lvl, .blur-lvl, .soa-lvl, .att-lvl')) {
-        updateTrialSummary();
-      }
-      // 重复次数输入变化
-      if (e.target.matches('#snrReps, #blurReps, #soaReps')) {
-        updateTrialSummary();
-      }
+      if (e.target.matches('.snr-lvl, .blur-lvl, .soa-lvl, .att-lvl')) updateTrialSummary();
+      if (e.target.matches('#snrReps, #blurReps, #soaReps')) updateTrialSummary();
     });
-    // 重复次数输入（input事件，实时响应）
     document.addEventListener('input', function(e) {
-      if (e.target.matches('#snrReps, #blurReps, #soaReps')) {
-        updateTrialSummary();
-      }
+      if (e.target.matches('#snrReps, #blurReps, #soaReps')) updateTrialSummary();
     });
   }
-  
+
   // ==================== 主菜单 ====================
   window.selectPhase = function(phase) {
     STATE.phase = phase;
-    
-    // 更新UI
-    ['pre', 'train', 'post'].forEach(p => {
+    ['pre','train','post'].forEach(p => {
       const el = document.getElementById(`phase_${p}`);
       if (el) {
         el.className = `phase-btn px-4 py-3 rounded-xl border-2 ${
@@ -112,15 +347,12 @@
         } text-center`;
       }
     });
-    
     updateConfigSummary();
   };
-  
+
   window.selectFunc = function(func) {
     STATE.func = func;
-    
-    // 更新UI
-    [1, 2, 3, 4].forEach(f => {
+    [1,2,3,4].forEach(f => {
       const el = document.getElementById(`func${f}`);
       if (el) {
         el.className = `func-btn p-4 rounded-xl border-2 ${
@@ -128,347 +360,374 @@
         } text-center`;
       }
     });
-    
     updateConfigSummary();
+    updatePreview();  // ★ 切换功能时更新预览界面
   };
-  
+
   function updateConfigSummary() {
-    const phaseNames = { pre: '训练前测试', train: '训练中', post: '训练后测试' };
-    const funcNames = { 1: '功能一（抗干扰）', 2: '功能二（视觉整合）', 3: '功能三（异步校准）', 4: '功能四（注意定位）' };
-    
+    const phaseNames = { pre:'训练前测试', train:'训练中', post:'训练后测试' };
+    const funcNames  = { 1:'功能一（抗干扰）', 2:'功能二（视觉整合）', 3:'功能三（异步校准）', 4:'功能四（注意定位）' };
     const cfgText = document.getElementById('cfgText');
     if (cfgText) {
-      const subjectId = document.getElementById('subjectId')?.value || 'S001';
+      const subjectId = document.getElementById('subjectId')?.value || 'P001';
       cfgText.textContent = `${funcNames[STATE.func]} | ${phaseNames[STATE.phase]} | 被试 ${subjectId}`;
     }
   }
-  
-  // ==================== 材料准备 ====================
+
+  // ==================== 材料准备（管理员） ====================
   window.goToPreparation = function() {
-    STATE.subjectId = document.getElementById('subjectId')?.value || 'S001';
-    
+    STATE.subjectId = document.getElementById('subjectId')?.value || 'P001';
     UIHelper.showScreen('prep');
     updatePreparationUI();
   };
-  
+
   function updatePreparationUI() {
-    const funcNames = ['', '功能一：抗干扰训练', '功能二：视觉整合训练', '功能三：异步校准训练', '功能四：注意定位训练'];
-    const phaseNames = { pre: '训练前测试', train: '训练中', post: '训练后测试' };
+    const funcNames = ['','功能一：抗干扰训练','功能二：视觉整合训练','功能三：异步校准训练','功能四：注意定位训练'];
+    const phaseNames = { pre:'训练前测试', train:'训练中', post:'训练后测试' };
     
-    // 更新标题
     const prepTitle = document.getElementById('prepTitle');
-    if (prepTitle) {
-      prepTitle.textContent = `材料准备 · ${funcNames[STATE.func]}`;
-    }
-    
+    if (prepTitle) prepTitle.textContent = `材料准备 · ${funcNames[STATE.func]}`;
     const prepSubtitle = document.getElementById('prepSubtitle');
-    if (prepSubtitle) {
-      prepSubtitle.textContent = `${phaseNames[STATE.phase]}阶段`;
-    }
-    
+    if (prepSubtitle) prepSubtitle.textContent = `${phaseNames[STATE.phase]}阶段`;
     const phaseIndicator = document.getElementById('phaseIndicator');
-    if (phaseIndicator) {
-      phaseIndicator.textContent = phaseNames[STATE.phase];
+    if (phaseIndicator) phaseIndicator.textContent = phaseNames[STATE.phase];
+    
+    const varSNR  = document.getElementById('varSNR');
+    const varBlur = document.getElementById('varBlur');
+    const varSOA  = document.getElementById('varSOA');
+    const varAtt  = document.getElementById('varAtt');
+    if (varSNR)  varSNR.classList.remove('hidden');
+    if (varBlur) varBlur.classList.toggle('hidden', STATE.func !== 2 && STATE.func !== 3);
+    if (varSOA)  varSOA.classList.toggle('hidden', STATE.func !== 3);
+    if (varAtt)  varAtt.classList.toggle('hidden', STATE.func !== 4);
+    
+    // ★ 加载已保存的设置（如果存在）
+    const savedSettings = AdminSettings.getSettings(STATE.subjectId, STATE.phase, STATE.func);
+    if (savedSettings && savedSettings.settings) {
+      console.log('[UI] 加载已保存的设置', savedSettings);
+      AdminSettings.applySettingsToUI(savedSettings.settings);
+      UIHelper.showNotification('已加载该被试、阶段、功能的保存设置', 'info');
+    } else {
+      // 使用默认设置
+      const defaultSettings = AdminSettings.getDefaultSettings(STATE.func, STATE.phase);
+      AdminSettings.applySettingsToUI(defaultSettings);
+      console.log('[UI] 使用默认设置', defaultSettings);
     }
     
-    // 显示/隐藏变量控制区域
-    const varSNR = document.getElementById('varSNR');
-    const varBlur = document.getElementById('varBlur');
-    const varSOA = document.getElementById('varSOA');
-    const varAtt = document.getElementById('varAtt');
-    
-    if (varSNR) varSNR.classList.remove('hidden');
-    if (varBlur) varBlur.classList.toggle('hidden', STATE.func !== 2 && STATE.func !== 3);
-    if (varSOA) varSOA.classList.toggle('hidden', STATE.func !== 3);
-    if (varAtt) varAtt.classList.toggle('hidden', STATE.func !== 4);
-    
-    // 更新预览
     updatePreview();
     updateTrialSummary();
   }
-  
+
   // ==================== 预览功能 ====================
   let previewPlaying = false;
-  
-  function updatePreview() {
-    const preview1 = document.getElementById('preview1');
-    const preview2 = document.getElementById('preview2');
-    const preview3 = document.getElementById('preview3');
-    const preview4 = document.getElementById('preview4');
-    
-    // 隐藏所有预览
-    if (preview1) preview1.classList.add('hidden');
-    if (preview2) preview2.classList.add('hidden');
-    if (preview3) preview3.classList.add('hidden');
-    if (preview4) preview4.classList.add('hidden');
-    
-    // 设置视频源
-    setupPreviewVideoSources();
-    
-    // 显示当前功能的预览
-    if (STATE.func === 1 && preview1) {
-      preview1.classList.remove('hidden');
-    } else if (STATE.func === 2 && preview2) {
-      preview2.classList.remove('hidden');
-      updateModule2Preview();
-    } else if (STATE.func === 3 && preview3) {
-      preview3.classList.remove('hidden');
-      updateModule3Preview();
-    } else if (STATE.func === 4 && preview4) {
-      preview4.classList.remove('hidden');
-      updateModule4Preview();
-    }
-  }
-  
-   function setupPreviewVideoSources() {
-    // ★★★ 关键修复：设置 source.src 后必须调用 videoElement.load()
 
-    // 功能2预览视频
+  function updatePreview() {
+    ['preview1','preview2','preview3','preview4'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.classList.add('hidden');
+    });
+
+    setupPreviewVideoSources();
+
+    const pid = `preview${STATE.func}`;
+    const pel = document.getElementById(pid);
+    if (pel) pel.classList.remove('hidden');
+
+    if (STATE.func === 2) updateModule2Preview();
+    if (STATE.func === 3) updateModule3Preview();
+  }
+
+  function setupPreviewVideoSources() {
+    // 功能2 - 使用 previewVideo
     const previewVideo2 = document.getElementById('previewVideo');
     const src2 = document.getElementById('previewSrc');
-    if (src2) src2.src = AudioProcessor.VIDEO_FILES[0];
-    if (previewVideo2) previewVideo2.load(); // ← 加这行
-
-    // 功能3预览视频
-    const previewVideoA = document.getElementById('previewVideoA');
-    const previewVideoB = document.getElementById('previewVideoB');
-    const src3A = document.getElementById('previewSrcA');
-    const src3B = document.getElementById('previewSrcB');
-    if (src3A) src3A.src = AudioProcessor.VIDEO_FILES[0];
-    if (src3B) src3B.src = AudioProcessor.VIDEO_FILES[1];
-    if (previewVideoA) previewVideoA.load(); // ← 加这行
-    if (previewVideoB) previewVideoB.load(); // ← 加这行
-
-    // 功能4预览视频
+    if (src2) src2.src = Config.VIDEO_FILES[0];
+    if (previewVideo2) previewVideo2.load();
+    
+    // 功能3 - 使用独立的 previewVideo3
+    const previewVideo3 = document.getElementById('previewVideo3');
+    const src3 = document.getElementById('previewSrc3');
+    if (src3) src3.src = Config.VIDEO_FILES[0];
+    if (previewVideo3) previewVideo3.load();
+    
+    // 功能4
     const previewMain = document.getElementById('previewMain');
     const previewDist = document.getElementById('previewDist');
     const src4Main = document.getElementById('previewMainSrc');
     const src4Dist = document.getElementById('previewDistSrc');
-    if (src4Main) src4Main.src = AudioProcessor.VIDEO_FILES[0];
-    if (src4Dist) src4Dist.src = AudioProcessor.VIDEO_FILES[1];
-    if (previewMain) previewMain.load(); // ← 加这行
-    if (previewDist) previewDist.load(); // ← 加这行
+    if (src4Main) src4Main.src = Config.VIDEO_FILES[0];
+    if (src4Dist) src4Dist.src = Config.VIDEO_FILES[1 % Config.VIDEO_FILES.length];
+    if (previewMain) previewMain.load();
+    if (previewDist) previewDist.load();
   }
 
-  
   function updateModule2Preview() {
-    // 功能2预览：视频 + 模糊度
     const video = document.getElementById('previewVideo');
     const blurSlider = document.getElementById('previewBlurSlider');
-    
-    if (video && video.readyState >= 2) {
-      const blurValue = blurSlider ? blurSlider.value : 0;
-      video.style.filter = blurValue > 0 ? `blur(${blurValue * 0.5}px)` : 'none';
+    if (video && blurSlider) {
+      const v = blurSlider.value;
+      video.style.filter = v > 0 ? `blur(${v * 0.5}px)` : 'none';
     }
   }
-  
+
   function updateModule3Preview() {
-    // 功能3预览：双视频 + SOA偏移
     const soaSlider = document.getElementById('previewSOASlider');
-    
     if (soaSlider) {
-      const soaValue = parseInt(soaSlider.value);
-      const soaText = document.getElementById('prev3SOAText');
-      if (soaText) {
-        soaText.textContent = `SOA: ${soaValue > 0 ? '+' : ''}${soaValue} ms`;
-      }
+      const v = parseInt(soaSlider.value);
+      const t = document.getElementById('prev3SOAText');
+      if (t) t.textContent = `SOA: ${v > 0 ? '+' : ''}${v} ms`;
     }
   }
-  
-  function updateModule4Preview() {
-    // 功能4预览：目标说话人 + 干扰说话人
-    console.log('更新功能4预览');
-  }
-  
+
   window.playPreview = async function() {
     if (previewPlaying) {
-      // 如果正在播放，停止
       AudioProcessor.stopAllAudio();
       stopAllPreviewVideos();
       previewPlaying = false;
       updatePreviewButton(false);
       return;
     }
-    
     try {
       previewPlaying = true;
       updatePreviewButton(true);
+
+      // ★ 根据功能读取对应的SNR选择器
+      let snrSliderId = 'previewSNRSlider';
+      if (STATE.func === 2) snrSliderId = 'previewSNRSlider2';
+      else if (STATE.func === 3) snrSliderId = 'previewSNRSlider3';
+      else if (STATE.func === 4) snrSliderId = 'previewSNRSlider4';
       
-      // 根据当前功能播放预览
+      const snrSlider = document.getElementById(snrSliderId);
+      const snr = snrSlider ? parseInt(snrSlider.value) : 0;
+
+      // ★ 新增：读取功能4的注意条件和目标位置
+      let attCondition = 'single';
+      let targetSide = 'left';
+      if (STATE.func === 4) {
+        const attRadio = document.querySelector('input[name="previewAttCondition"]:checked');
+        if (attRadio) attCondition = attRadio.value;
+        const sideRadio = document.querySelector('input[name="previewTargetSide"]:checked');
+        if (sideRadio) targetSide = sideRadio.value;
+        
+        // 更新目标标签
+        const targetLabel = document.getElementById('previewTargetLabel');
+        if (targetLabel) {
+          targetLabel.textContent = `👤 目标（${targetSide === 'left' ? '左' : '右'}）`;
+        }
+      }
+
+      STATE.isPlaying = false;
+      AudioProcessor.stopAllAudio();
+      stopAllPreviewVideos();
+
+      // ★ 修复：预览时播放真实的音频文件（ba/da/ga），而非TTS合成音
+      // 取第一个材料（ba）作为预览示例
+      const previewMat = Config.MATERIALS[0];
+
       if (STATE.func === 1) {
-        const snrSlider = document.getElementById('previewSNRSlider');
-        const snr = snrSlider ? parseInt(snrSlider.value) : 0;
-        await AudioProcessor.playPreviewMixed(snr);
+        // 功能1：纯音频 + 噪音（无视频）
+        console.log('[playPreview] 功能1预览，SNR:', snr, '音频:', previewMat.audio);
+        await AudioProcessor.playMixedAudioFile(previewMat.audio, snr);
       } else if (STATE.func === 2) {
+        // 功能2：视频（带模糊）+ 音频 + 噪音
         const video = document.getElementById('previewVideo');
+        const blurSlider = document.getElementById('previewBlurSlider');
         if (video) {
           video.currentTime = 0;
+          if (blurSlider) {
+            const v = blurSlider.value;
+            video.style.filter = v > 0 ? `blur(${v * Config.BLUR_CSS_FACTOR}px)` : 'none';
+          }
           await video.play();
         }
-        const snrSlider = document.getElementById('previewSNRSlider');
-        const snr = snrSlider ? parseInt(snrSlider.value) : 0;
-        await AudioProcessor.playPreviewMixed(snr);
+        console.log('[playPreview] 功能2预览，SNR:', snr, '音频:', previewMat.audio);
+        await AudioProcessor.playMixedAudioFile(previewMat.audio, snr);
+        if (video) { video.pause(); video.currentTime = 0; }
       } else if (STATE.func === 3) {
-        const videoA = document.getElementById('previewVideoA');
-        const videoB = document.getElementById('previewVideoB');
-        if (videoA) { videoA.currentTime = 0; await videoA.play(); }
-        if (videoB) { videoB.currentTime = 0; await videoB.play(); }
-        const snrSlider = document.getElementById('previewSNRSlider');
-        const snr = snrSlider ? parseInt(snrSlider.value) : 0;
-        await AudioProcessor.playPreviewMixed(snr);
+        // 功能3：单个视频 + SOA延迟 + 音频 + 模糊度
+        const video = document.getElementById('previewVideo3');
+        const soaSlider = document.getElementById('previewSOASlider');
+        const blurSlider3 = document.getElementById('previewBlurSlider3');
+        const soa = soaSlider ? parseInt(soaSlider.value) : 0;
+        
+        if (video) {
+          video.currentTime = 0;
+          // 应用模糊度
+          if (blurSlider3) {
+            const v = blurSlider3.value;
+            video.style.filter = v > 0 ? `blur(${v * Config.BLUR_CSS_FACTOR}px)` : 'none';
+          } else {
+            video.style.filter = 'none';
+          }
+          
+          if (soa >= 0) {
+            await video.play();
+            if (soa > 0) await new Promise(r => setTimeout(r, soa));
+          }
+        }
+        console.log('[playPreview] 功能3预览，SNR:', snr, 'SOA:', soa, '音频:', previewMat.audio);
+        await AudioProcessor.playMixedAudioFile(previewMat.audio, snr);
+        // 若音频比视频短，等视频播完
+        if (video && !video.paused) {
+          await new Promise(r => {
+            video.onended = r;
+            // 超时保护：3秒后强制继续
+            setTimeout(r, 3000);
+          });
+        }
+        if (video) { video.pause(); video.currentTime = 0; }
       } else if (STATE.func === 4) {
-        const videoMain = document.getElementById('previewMain');
-        const videoDist = document.getElementById('previewDist');
-        if (videoMain) { videoMain.currentTime = 0; await videoMain.play(); }
-        if (videoDist) { videoDist.currentTime = 0; await videoDist.play(); }
-        const snrSlider = document.getElementById('previewSNRSlider');
-        const snr = snrSlider ? parseInt(snrSlider.value) : 0;
-        await AudioProcessor.playPreviewMixed(snr);
+        // 功能4：目标视频 + 干扰视频 + 音频
+        // 根据目标位置决定哪个视频是目标
+        const vL = document.getElementById('previewMain');  // 左侧视频
+        const vR = document.getElementById('previewDist');  // 右侧视频
+        
+        if (targetSide === 'left') {
+          // 目标在左，干扰在右
+          if (vL) { vL.currentTime = 0; await vL.play(); }
+          if (vR && attCondition === 'dual') { vR.currentTime = 0; await vR.play(); }
+        } else {
+          // 目标在右，干扰在左
+          if (vL && attCondition === 'dual') { vL.currentTime = 0; await vL.play(); }
+          if (vR) { vR.currentTime = 0; await vR.play(); }
+        }
+        
+        console.log('[playPreview] 功能4预览，SNR:', snr, '注意:', attCondition, '目标位置:', targetSide, '音频:', previewMat.audio);
+        await AudioProcessor.playMixedAudioFile(previewMat.audio, snr);
+        
+        if (vL) vL.pause();
+        if (vR) vR.pause();
       }
-      
-      // 播放完成后恢复按钮状态
+
       previewPlaying = false;
       updatePreviewButton(false);
-      
-    } catch (error) {
-      console.error('[Preview] 预览播放失败:', error);
+    } catch(e) {
+      console.error('[playPreview] 失败:', e);
       AudioProcessor.stopAllAudio();
       stopAllPreviewVideos();
       previewPlaying = false;
       updatePreviewButton(false);
-      UIHelper.showNotification('预览播放失败: ' + error.message, 'error');
+      UIHelper.showNotification('预览播放失败: ' + e.message, 'error');
     }
   };
-  
+
   function updatePreviewButton(isPlaying) {
-    // 更新所有预览按钮文本
-    const buttons = document.querySelectorAll('[onclick="playPreview()"]');
-    buttons.forEach(btn => {
+    document.querySelectorAll('[onclick="playPreview()"]').forEach(btn => {
       if (isPlaying) {
         btn.textContent = '⏹️ 停止预览';
-        btn.classList.remove('bg-primary');
-        btn.classList.add('bg-red-500');
+        btn.classList.replace('bg-primary', 'bg-red-500');
       } else {
         btn.textContent = '▶️ 播放预览';
-        btn.classList.remove('bg-red-500');
-        btn.classList.add('bg-primary');
+        btn.classList.replace('bg-red-500', 'bg-primary');
       }
     });
   }
-  
+
   function stopAllPreviewVideos() {
-    const videoIds = ['previewVideo', 'previewVideoA', 'previewVideoB', 'previewMain', 'previewDist'];
-    videoIds.forEach(id => {
+    ['previewVideo','previewVideo3','previewMain','previewDist'].forEach(id => {
       const v = document.getElementById(id);
       if (v) v.pause();
     });
   }
-  
-  // ==================== 试次生成 ====================
+
+  // ==================== 试次统计 ====================
   function updateTrialSummary() {
-    // 计算试次总数
-    let totalTrials = 0;
-    let detail = '';
-    
-    const snrLevels = getSelectedValues('.snr-lvl');
+    const snrLevels  = getSelectedValues('.snr-lvl');
     const blurLevels = getSelectedValues('.blur-lvl');
-    const soaLevels = getSelectedValues('.soa-lvl');
-    const attLevels = getSelectedValues('.att-lvl');
-    
-    const snrReps = parseInt(document.getElementById('snrReps')?.value) || 3;
-    const blurReps = parseInt(document.getElementById('blurReps')?.value) || 3;
-    const soaReps = parseInt(document.getElementById('soaReps')?.value) || 3;
-    
+    const soaLevels  = getSelectedValues('.soa-lvl');
+    const attLevels  = getSelectedValues('.att-lvl');
+    const snrReps    = parseInt(document.getElementById('snrReps')?.value) || 3;
+    const blurReps   = parseInt(document.getElementById('blurReps')?.value) || 3;
+    const soaReps    = parseInt(document.getElementById('soaReps')?.value) || 3;
+
+    let total = 0, detail = '';
     if (STATE.func === 1) {
-      totalTrials = snrLevels.length * snrReps;
-      detail = `SNR: ${snrLevels.length}档 × ${snrReps}次 = ${totalTrials}试次`;
+      total  = snrLevels.length * snrReps;
+      detail = `SNR: ${snrLevels.length}档 × ${snrReps}次 = ${total}试次`;
     } else if (STATE.func === 2) {
-      const combinations = snrLevels.length * blurLevels.length;
-      const reps = Math.max(snrReps, blurReps);
-      totalTrials = combinations * reps;
-      detail = `SNR(${snrLevels.length}) × 模糊度(${blurLevels.length}) × ${reps}次 = ${totalTrials}试次`;
+      const c = snrLevels.length * blurLevels.length;
+      const r = Math.max(snrReps, blurReps);
+      total  = c * r;
+      detail = `SNR(${snrLevels.length}) × 模糊度(${blurLevels.length}) × ${r}次 = ${total}试次`;
     } else if (STATE.func === 3) {
-      const combinations = snrLevels.length * blurLevels.length * soaLevels.length;
-      const reps = Math.max(snrReps, blurReps, soaReps);
-      totalTrials = combinations * reps;
-      detail = `SNR(${snrLevels.length}) × 模糊度(${blurLevels.length}) × SOA(${soaLevels.length}) × ${reps}次 = ${totalTrials}试次`;
+      const c = snrLevels.length * blurLevels.length * soaLevels.length;
+      const r = Math.max(snrReps, blurReps, soaReps);
+      total  = c * r;
+      detail = `SNR(${snrLevels.length}) × 模糊(${blurLevels.length}) × SOA(${soaLevels.length}) × ${r}次 = ${total}试次`;
     } else if (STATE.func === 4) {
-      const combinations = snrLevels.length * attLevels.length;
-      totalTrials = combinations * snrReps;
-      detail = `SNR(${snrLevels.length}) × 注意条件(${attLevels.length}) × ${snrReps}次 = ${totalTrials}试次`;
+      total  = snrLevels.length * attLevels.length * snrReps;
+      detail = `SNR(${snrLevels.length}) × 注意(${attLevels.length}) × ${snrReps}次 = ${total}试次`;
     }
-    
-    const previewTotal = document.getElementById('previewTotal');
-    if (previewTotal) {
-      previewTotal.textContent = totalTrials;
-    }
-    
-    const summaryText = document.getElementById('summaryText');
-    if (summaryText) {
-      summaryText.textContent = detail;
-    }
+
+    const el = document.getElementById('previewTotal');
+    if (el) el.textContent = total;
+    const s = document.getElementById('summaryText');
+    if (s) s.textContent = detail;
   }
-  
-  function getSelectedValues(selector) {
-    const elements = document.querySelectorAll(selector);
-    return Array.from(elements)
-      .filter(el => el.checked)
-      .map(el => parseInt(el.value));
-  }
-  
-  // ==================== 生成程序 ====================
+
+  // ==================== 生成程序（管理员流程） ====================
   window.generateTrials = function() {
     UIHelper.showLoading('正在生成试次...');
-    
     try {
-      // 获取配置
       const config = {
-        snrLevels: getSelectedValues('.snr-lvl'),
+        snrLevels:  getSelectedValues('.snr-lvl'),
         blurLevels: getSelectedValues('.blur-lvl'),
-        soaLevels: getSelectedValues('.soa-lvl'),
-        attLevels: getSelectedValues('.att-lvl'),
+        soaLevels:  getSelectedValues('.soa-lvl'),
+        attLevels:  getSelectedValues('.att-lvl'),
         repetitions: parseInt(document.getElementById('snrReps')?.value) || 3,
-        order: 'random' // 默认随机
+        order: 'random'
       };
       
-      // 根据功能模块生成试次
+      // ★ 保存管理员设置（按被试、阶段、功能保存）
+      AdminSettings.saveSettings(STATE.subjectId, STATE.phase, STATE.func, config);
+      console.log('[Generate] 设置已保存', config);
+
       let trials = [];
-      
-      if (STATE.func === 1) {
-        trials = Module1.generateTrialQueue(config);
-      } else if (STATE.func === 2) {
-        trials = Module2.generateTrialQueue(config);
-      } else if (STATE.func === 3) {
-        trials = Module3.generateTrialQueue(config);
-      } else if (STATE.func === 4) {
-        trials = Module4.generateTrialQueue(config);
-      }
-      
+      if (STATE.func === 1) trials = Module1.generateTrialQueue(config);
+      else if (STATE.func === 2) trials = Module2.generateTrialQueue(config);
+      else if (STATE.func === 3) trials = Module3.generateTrialQueue(config);
+      else if (STATE.func === 4) trials = Module4.generateTrialQueue(config);
+
       STATE.trialQueue = trials;
       STATE.currentTrialIndex = 0;
       STATE.results = [];
-      
-      // 初始化自适应算法（如果需要）
-      if (STATE.snrMode === 'adaptive') {
-        initAdaptiveAlgorithm();
-      }
-      
+
+      if (STATE.snrMode === 'adaptive') initAdaptiveAlgorithm();
+
       updateTrialSummary();
-      
       UIHelper.hideLoading();
       UIHelper.showNotification(`已生成 ${trials.length} 个试次`, 'success');
-      
-      // 跳转到生成完成页面
+
       UIHelper.showScreen('generate');
       updateGenerateUI(trials.length);
-      
-    } catch (error) {
-      console.error('生成试次失败:', error);
+    } catch(e) {
+      console.error('生成失败:', e);
       UIHelper.hideLoading();
-      UIHelper.showNotification('生成试次失败: ' + error.message, 'error');
+      UIHelper.showNotification('生成失败: ' + e.message, 'error');
     }
   };
-  
+
+  // ==================== 保存管理员设置（不生成试次）====================
+  window.saveAdminSettings = function () {
+    try {
+      const config = {
+        snrLevels:  getSelectedValues('.snr-lvl'),
+        blurLevels: getSelectedValues('.blur-lvl'),
+        soaLevels:  getSelectedValues('.soa-lvl'),
+        attLevels:  getSelectedValues('.att-lvl'),
+        repetitions: parseInt(document.getElementById('snrReps')?.value) || 3,
+        snrMode:    document.getElementById('snrMode')?.value || 'adaptive',
+        order:      'random'
+      };
+      AdminSettings.saveSettings(STATE.subjectId, STATE.phase, STATE.func, config);
+      UIHelper.showNotification('设置已保存！', 'success');
+      console.log('[saveAdminSettings]', STATE.subjectId, STATE.phase, STATE.func, config);
+    } catch (e) {
+      console.error('保存设置失败:', e);
+      UIHelper.showNotification('保存失败: ' + e.message, 'error');
+    }
+  };
+
   function initAdaptiveAlgorithm() {
     const snrLevels = getSelectedValues('.snr-lvl');
     STATE.adaptive = {
@@ -481,616 +740,664 @@
       isRunning: false
     };
   }
-  
+
   function updateGenerateUI(trialCount) {
-    const generateCount = document.getElementById('generateCount');
-    if (generateCount) {
-      generateCount.textContent = trialCount;
-    }
-    
-    // ✅ 动态生成实验设置摘要
-    const funcNames = {
-      1: '功能一：抗干扰训练',
-      2: '功能二：视觉整合训练',
-      3: '功能三：异步校准训练',
-      4: '功能四：注意定位训练'
-    };
-    const phaseNames = { pre: '训练前测试', train: '训练中', post: '训练后测试' };
-    
-    const snrLevels = getSelectedValues('.snr-lvl');
+    const gc = document.getElementById('generateCount');
+    if (gc) gc.textContent = trialCount;
+
+    const funcNames  = { 1:'功能一：抗干扰训练', 2:'功能二：视觉整合训练', 3:'功能三：异步校准训练', 4:'功能四：注意定位训练' };
+    const phaseNames = { pre:'训练前测试', train:'训练中', post:'训练后测试' };
+    const snrLevels  = getSelectedValues('.snr-lvl');
     const blurLevels = getSelectedValues('.blur-lvl');
-    const soaLevels = getSelectedValues('.soa-lvl');
-    const attLevels = getSelectedValues('.att-lvl');
-    
-    // 实验设置列表
-    const settingsList = document.getElementById('expSettingsList');
-    if (settingsList) {
-      const settingsHTML = [];
-      
-      // 基本信息
-      settingsHTML.push(`<li><strong>功能模块：</strong>${funcNames[STATE.func]}</li>`);
-      settingsHTML.push(`<li><strong>实验阶段：</strong>${phaseNames[STATE.phase]}</li>`);
-      settingsHTML.push(`<li><strong>被试ID：</strong>${STATE.subjectId}</li>`);
-      settingsHTML.push(`<li><strong>呈现顺序：</strong>${STATE.snrMode === 'adaptive' ? '自适应' : '随机'}</li>`);
-      
-      settingsList.innerHTML = settingsHTML.join('');
+    const soaLevels  = getSelectedValues('.soa-lvl');
+    const attLevels  = getSelectedValues('.att-lvl');
+
+    const sl = document.getElementById('expSettingsList');
+    if (sl) {
+      sl.innerHTML = [
+        `<li><strong>功能：</strong>${funcNames[STATE.func]}</li>`,
+        `<li><strong>阶段：</strong>${phaseNames[STATE.phase]}</li>`,
+        `<li><strong>被试：</strong>${STATE.subjectId}</li>`
+      ].join('');
     }
-    
-    // 实验参数列表
-    const paramsList = document.getElementById('expParamsList');
-    if (paramsList) {
-      const paramsHTML = [];
-      
-      // SNR级别
-      const snrText = snrLevels.length === 7 ? '全部7档 (-18~+9dB)' : `${snrLevels.length}档 (${snrLevels.sort((a,b)=>b-a).join(', ')} dB)`;
-      paramsHTML.push(`<li><strong>SNR级别：</strong>${snrText}</li>`);
-      
-      // 功能特定参数
-      if (STATE.func === 2 && blurLevels.length > 0) {
-        const blurText = blurLevels.length === 7 ? '全部7档 (0~60%)' : `${blurLevels.length}档`;
-        paramsHTML.push(`<li><strong>模糊度：</strong>${blurText}</li>`);
-      }
-      
-      if (STATE.func === 3 && soaLevels.length > 0) {
-        const soaText = soaLevels.length === 11 ? '全部11档 (-300~+300ms)' : `${soaLevels.length}档`;
-        paramsHTML.push(`<li><strong>视听SOA：</strong>${soaText}</li>`);
-      }
-      
-      if (STATE.func === 4 && attLevels.length > 0) {
-        const attText = attLevels.map(a => a === 'single' ? '单说话人' : '双说话人').join(', ');
-        paramsHTML.push(`<li><strong>注意条件：</strong>${attText}</li>`);
-      }
-      
-      // 算法信息
-      if (STATE.snrMode === 'adaptive') {
-        paramsHTML.push(`<li><strong>算法：</strong>1-up/3-down 自适应</li>`);
-        paramsHTML.push(`<li><strong>目标正确率：</strong>≥ 80%</li>`);
-        paramsHTML.push(`<li><strong>停止条件：</strong>反转8次后停止</li>`);
-      }
-      
-      paramsList.innerHTML = paramsHTML.join('');
+
+    const pl = document.getElementById('expParamsList');
+    if (pl) {
+      const rows = [`<li><strong>SNR：</strong>${snrLevels.sort((a,b)=>b-a).join(', ')} dB</li>`];
+      if (STATE.func === 2 && blurLevels.length) rows.push(`<li><strong>模糊度：</strong>${blurLevels.join(', ')}%</li>`);
+      if (STATE.func === 3 && soaLevels.length)  rows.push(`<li><strong>SOA：</strong>${soaLevels.join(', ')} ms</li>`);
+      if (STATE.func === 4 && attLevels.length)  rows.push(`<li><strong>注意条件：</strong>${attLevels.join(', ')}</li>`);
+      rows.push(`<li><strong>总题数：</strong>${trialCount}</li>`);
+      pl.innerHTML = rows.join('');
     }
   }
-  
+
   // ==================== 开始实验 ====================
   window.startExperiment = function() {
-    // ★ 启动事件记录
-    EventLogger.startSession({
-      subjectId: STATE.subjectId,
-      phase: STATE.phase,
-      func: STATE.func
-    });
+    // ★ 修复：检查 trialQueue 是否为空
+    if (!STATE.trialQueue || STATE.trialQueue.length === 0) {
+      UIHelper.showNotification('错误：没有生成的试次。请先点击"生成程序"按钮。', 'error');
+      console.error('[startExperiment] trialQueue 为空，无法开始实验');
+      return;
+    }
 
-    UIHelper.showScreen('exp');
-    updateExperimentUI();
-    
-    // 设置实验中的视频源
-    setupExperimentVideoSources();
-    
-    // 开始第一个试次
-    startNextTrial();
+    try {
+      console.log('[startExperiment] 开始实验，试次数:', STATE.trialQueue.length);
+      
+      EventLogger.startSession({ subjectId: STATE.subjectId, phase: STATE.phase, func: STATE.func });
+      
+      // ★ 关键修复：确保实验界面正确显示
+      console.log('[startExperiment] 显示实验界面');
+      UIHelper.showScreen('exp');
+      
+      // 验证屏幕是否真的显示了
+      const expScreen = document.getElementById('screen_exp');
+      if (expScreen && !expScreen.classList.contains('active')) {
+        console.warn('[startExperiment] 实验界面未激活，强制显示');
+        expScreen.classList.add('active');
+      }
+      
+      updateExperimentUI();
+      setupExperimentVideoSources();
+      
+      console.log('[startExperiment] 开始第一个试次');
+      startNextTrial();
+      
+    } catch (e) {
+      console.error('[startExperiment] 实验启动失败:', e);
+      UIHelper.showNotification('实验启动失败: ' + e.message, 'error');
+    }
   };
-  
-    function setupExperimentVideoSources() {
-    // ★★★ 关键修复：设置 source.src 后必须调用 videoElement.load()
 
-    // 功能2实验视频
+  /**
+   * 设置实验视频源，每个视频取对应材料（循环复用）
+   * 修复：设置 source.src 后必须调用 video.load()
+   * ★ 新增：添加错误处理，防止视频加载失败导致白屏
+   */
+  function setupExperimentVideoSources() {
+    const mats = Config.MATERIALS;
+    const n    = mats.length;
+
+    // 功能2：单视频 → 取第一个材料
     const expVideo = document.getElementById('expVideo');
-    const expSrc = document.getElementById('expVideoSrc');
-    if (expSrc) expSrc.src = AudioProcessor.VIDEO_FILES[0];
-    if (expVideo) expVideo.load(); // ← 加这行
+    const expSrc   = document.getElementById('expVideoSrc');
+    if (expSrc) {
+      expSrc.src = mats[0].video;
+      if (expVideo) {
+        expVideo.load();
+        expVideo.onerror = function() {
+          console.error('[Video] 功能2视频加载失败:', mats[0].video);
+          UIHelper.showNotification('视频加载失败，请检查文件路径', 'error');
+        };
+      }
+    }
 
-    // 功能3实验视频
-    const expVideoA = document.getElementById('expVideoA');
-    const expVideoB = document.getElementById('expVideoB');
-    const expSrcA = document.getElementById('expSrcA');
-    const expSrcB = document.getElementById('expSrcB');
-    if (expSrcA) expSrcA.src = AudioProcessor.VIDEO_FILES[0];
-    if (expSrcB) expSrcB.src = AudioProcessor.VIDEO_FILES[1];
-    if (expVideoA) expVideoA.load(); // ← 加这行
-    if (expVideoB) expVideoB.load(); // ← 加这行
+    // 功能3：单视频 → 取第一个材料
+    const expVideo3 = document.getElementById('expVideo3');
+    const expSrc3   = document.getElementById('expVideo3Src');
+    if (expSrc3) {
+      expSrc3.src = mats[0].video;
+      if (expVideo3) {
+        expVideo3.load();
+        expVideo3.onerror = function() {
+          console.error('[Video] 功能3视频加载失败:', mats[0].video);
+        };
+      }
+    }
 
-    // 功能4实验视频
+    // 功能4：目标 / 干扰视频
     const expVideoTarget = document.getElementById('expVideoTarget');
-    const expVideoDist = document.getElementById('expVideoDist');
-    const expTargetSrc = document.getElementById('expTargetSrc');
-    const expDistSrc = document.getElementById('expDistSrc');
-    if (expTargetSrc) expTargetSrc.src = AudioProcessor.VIDEO_FILES[0];
-    if (expDistSrc) expDistSrc.src = AudioProcessor.VIDEO_FILES[1];
-    if (expVideoTarget) expVideoTarget.load(); // ← 加这行
-    if (expVideoDist) expVideoDist.load(); // ← 加这行
-  }
-
-  
-  function updateExperimentUI() {
-    const funcNames = ['', '功能一', '功能二', '功能三', '功能四'];
-    const phaseNames = { pre: '训练前测试', train: '训练中', post: '训练后测试' };
-    
-    const expTitleBar = document.getElementById('expTitleBar');
-    if (expTitleBar) {
-      expTitleBar.textContent = `${funcNames[STATE.func]} · ${phaseNames[STATE.phase]}`;
+    const expVideoDist   = document.getElementById('expVideoDist');
+    const expTargetSrc   = document.getElementById('expTargetSrc');
+    const expDistSrc     = document.getElementById('expDistSrc');
+    if (expTargetSrc) {
+      expTargetSrc.src = mats[0].video;
+      if (expVideoTarget) {
+        expVideoTarget.load();
+        expVideoTarget.onerror = function() {
+          console.error('[Video] 功能4目标视频加载失败:', mats[0].video);
+        };
+      }
+    }
+    if (expDistSrc) {
+      expDistSrc.src = mats[1 % n].video;
+      if (expVideoDist) {
+        expVideoDist.load();
+        expVideoDist.onerror = function() {
+          console.error('[Video] 功能4干扰视频加载失败:', mats[1 % n].video);
+        };
+      }
     }
     
-    // 显示/隐藏实验视图
-    [1, 2, 3, 4].forEach(f => {
-      const view = document.getElementById(`expView${f}`);
-      if (view) {
-        view.classList.toggle('hidden', f !== STATE.func);
-      }
+    console.log('[Video] 实验视频源设置完成');
+  }
+
+  /**
+   * 根据当前试次的词语找到对应的视频/音频路径
+   * @param {string} word - 试次词语（对应 Config.MATERIALS[i].label）
+   * @returns {{ video:string, audio:string } | null}
+   */
+  function getMaterialForWord(word) {
+    const mat = Config.MATERIALS.find(m => m.label === word);
+    return mat || Config.MATERIALS[0];
+  }
+
+  function updateExperimentUI() {
+    const funcNames  = { 1:'功能一', 2:'功能二', 3:'功能三', 4:'功能四' };
+    const phaseNames = { pre:'训练前测试', train:'训练中', post:'训练后测试' };
+    const phaseEmoji = { pre:'📊', train:'🏋️', post:'📈' };
+
+    const expTitleBar = document.getElementById('expTitleBar');
+    if (expTitleBar) expTitleBar.textContent = `${phaseEmoji[STATE.phase]} ${phaseNames[STATE.phase]} · ${funcNames[STATE.func]}`;
+
+    const expSubtitleBar = document.getElementById('expSubtitleBar');
+    if (expSubtitleBar) expSubtitleBar.textContent = `被试 ${STATE.subjectId}`;
+
+    const phaseTag = document.getElementById('expPhaseTag');
+    if (phaseTag) phaseTag.textContent = phaseNames[STATE.phase];
+
+    const expPhaseCard = document.getElementById('expPhaseCard');
+    if (expPhaseCard) expPhaseCard.textContent = `${phaseEmoji[STATE.phase]} ${phaseNames[STATE.phase]}`;
+
+    const expFuncCard = document.getElementById('expFuncCard');
+    const funcDescs = { 1:'抗干扰', 2:'视觉整合', 3:'异步校准', 4:'注意定位' };
+    if (expFuncCard) expFuncCard.textContent = `${funcNames[STATE.func]} · ${funcDescs[STATE.func]}`;
+
+    // 显示对应功能视图
+    [1,2,3,4].forEach(f => {
+      const v = document.getElementById(`expView${f}`);
+      if (v) v.classList.toggle('hidden', f !== STATE.func);
     });
   }
+
+  // ==================== 试次流程 ====================
   
+  /**
+   * 显示"点击播放按钮开始"的提示
+   * 在试次开始时调用，不显示具体题目
+   */
+  function showQuestionPrompt() {
+    const q = document.getElementById('expQuestion');
+    if (q) {
+      q.textContent = '▶️ 点击播放按钮开始';
+      q.classList.add('text-blue-500', 'font-bold');
+    }
+    
+    // 隐藏选项或显示为"待播放"状态
+    const buttons = document.querySelectorAll('#expChoices button');
+    buttons.forEach(btn => {
+      btn.textContent = '⏳ 等待播放...';
+      btn.disabled = true;
+      btn.className = 'choice-btn w-full py-4 px-5 bg-gray-200 border-2 border-gray-300 rounded-2xl text-left text-lg font-bold opacity-50';
+    });
+    
+    console.log('[Trial] 显示播放提示，等待用户点击播放按钮');
+  }
+
   async function startNextTrial() {
     if (STATE.currentTrialIndex >= STATE.trialQueue.length) {
-      // 所有试次完成
       showResults();
       return;
     }
-    
+
     try {
-      // 重置反馈显示
       resetFeedback();
-      
-      let trial = null;
-      
-      // 从队列中获取试次数据（不调用模块的nextTrial，避免重复打乱）
-      trial = STATE.trialQueue[STATE.currentTrialIndex];
-      
-      // 如果试次还没有shuffledChoices（首次显示），进行打乱
-      if (!trial.shuffledChoices) {
-        const correctAnswer = trial.correctAnswer;
-        const otherChoices = trial.choices.filter(c => c !== correctAnswer);
-        // Fisher-Yates洗牌
-        for (let i = otherChoices.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [otherChoices[i], otherChoices[j]] = [otherChoices[j], otherChoices[i]];
+
+      const trial = STATE.trialQueue[STATE.currentTrialIndex];
+
+      // ★ 新增：功能4 试次开始前显示目标位置提示
+      if (STATE.func === 4 && trial) {
+        const side = trial.targetSide || 'left';
+        const hintText = `📍 本试次请定位${side === 'left' ? '左侧' : '右侧'}目标说话人的内容`;
+        
+        // ★ 修改：使用覆盖层显示在视频上方
+        const overlay = document.getElementById('trialOverlay');
+        const overlayText = document.getElementById('trialOverlayText');
+        if (overlay && overlayText) {
+          overlayText.textContent = hintText;
+          overlay.classList.remove('hidden');
         }
-        trial.shuffledChoices = [
-          otherChoices[0] || correctAnswer,
-          otherChoices[1] || correctAnswer,
-          correctAnswer,  // C位始终是正确答案
-          otherChoices[2] || correctAnswer
-        ];
-        trial.correctIndex = 2;
+        
+        // 1.5秒后自动隐藏
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
+        if (overlay) overlay.classList.add('hidden');
       }
-      
-      if (!trial) {
-        showResults();
-        return;
+
+      // 洗牌选项（只做一次）
+      if (!trial.shuffledChoices) {
+        const correct = trial.correctAnswer;
+        const others  = trial.choices.filter(c => c !== correct);
+        for (let i = others.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [others[i], others[j]] = [others[j], others[i]];
+        }
+        // 将正确答案插入随机位置（0-3）
+        const insertAt = Math.floor(Math.random() * 4);
+        const shuffled = [...others.slice(0, 3)];
+        shuffled.splice(insertAt, 0, correct);
+        trial.shuffledChoices = shuffled;
+        trial.correctIndex    = insertAt;
       }
+
+      // ★ 修改：不在试次开始时显示题目，等用户点击播放按钮后再显示
+      // updateTrialUI(trial);
       
-      // 更新UI显示试次信息
-      updateTrialUI(trial);
+      // ★ 新增：只显示"点击播放按钮开始"的提示
+      showQuestionPrompt();
       
-      // 重置状态：等待用户点击播放
       STATE.isWaitingForResponse = false;
-      STATE.isPlaying = false;
-      STATE.responseStartTime = null;
-      
-      // 选项按钮初始禁用（等点击播放按钮后才启用）
+      STATE.isPlaying            = false;
+      STATE.responseStartTime    = null;
+
+      // 等待用户点击播放按钮
       enableChoiceButtons(false);
-      
-    } catch (error) {
-      console.error('开始试次失败:', error);
-      UIHelper.showNotification('开始试次失败', 'error');
+
+      // 更新播放按钮为就绪状态
+      updatePlayButton(false);
+
+    } catch(e) {
+      console.error('开始试次失败:', e);
     }
   }
-  
+
   function resetFeedback() {
-    const feedback = document.getElementById('expFeedback');
-    const feedbackText = document.getElementById('expFeedbackText');
-    if (feedback) {
-      feedback.classList.add('hidden');
-      feedback.className = 'mt-3 p-3 rounded-xl text-center hidden';
-    }
-    if (feedbackText) {
-      feedbackText.textContent = '';
-    }
+    const fb   = document.getElementById('expFeedback');
+    const fbTx = document.getElementById('expFeedbackText');
+    if (fb)   { fb.classList.add('hidden'); fb.className = 'mt-4 p-4 rounded-2xl text-center hidden'; }
+    if (fbTx) fbTx.textContent = '';
   }
-  
+
   function updateTrialUI(trial) {
-    // 更新进度
-    const progressText = document.getElementById('expProgressText');
-    if (progressText) {
-      progressText.textContent = `试次 ${STATE.currentTrialIndex + 1} / ${STATE.trialQueue.length}`;
+    const n = STATE.trialQueue.length;
+    const i = STATE.currentTrialIndex + 1;
+
+    const prog = document.getElementById('expProgressText');
+    if (prog) prog.textContent = `${i} / ${n}`;
+
+    const bar = document.getElementById('expProgressBar');
+    if (bar) bar.style.width = `${(i / n) * 100}%`;
+
+    const condText = document.getElementById('expConditionText');
+    if (condText) {
+      let t = '';
+      if (STATE.func === 1) t = `SNR: ${trial.snr} dB`;
+      else if (STATE.func === 2) t = `SNR: ${trial.snr} dB | 模糊: ${trial.blur}%`;
+      else if (STATE.func === 3) t = `SNR: ${trial.snr} dB | SOA: ${trial.soa} ms`;
+      else if (STATE.func === 4) t = `SNR: ${trial.snr} dB | ${trial.attention === 'dual' ? '双说话人' : '单说话人'}`;
+      condText.textContent = `条件：${t}`;
     }
-    
-    const progressBar = document.getElementById('expProgressBar');
-    if (progressBar) {
-      const percent = ((STATE.currentTrialIndex + 1) / STATE.trialQueue.length) * 100;
-      progressBar.style.width = `${percent}%`;
-    }
-    
-    // 更新条件显示
-    const conditionText = document.getElementById('expConditionText');
-    if (conditionText && trial) {
-      let text = '';
-      if (STATE.func === 1) {
-        text = `SNR: ${trial.snr} dB`;
-      } else if (STATE.func === 2) {
-        text = `SNR: ${trial.snr} dB | 模糊度: ${trial.blur}%`;
-      } else if (STATE.func === 3) {
-        text = `SNR: ${trial.snr} dB | SOA: ${trial.soa} ms`;
-      } else if (STATE.func === 4) {
-        text = `SNR: ${trial.snr} dB | ${trial.attention === 'dual' ? '双说话人' : '单说话人'}`;
-      }
-      conditionText.textContent = `条件：${text}`;
-    }
-    
-    // 更新选项按钮
+
     updateChoiceButtons(trial);
   }
-  
-  // ==================== 修复关键Bug：选项按钮 ====================
+
   function updateChoiceButtons(trial) {
     if (!trial) return;
-    
     const choices = trial.shuffledChoices || trial.choices || [];
     const buttons = document.querySelectorAll('#expChoices button');
-    
-    buttons.forEach((btn, index) => {
-      if (index < choices.length) {
-        // ✅ 修复：正确设置按钮文本和事件
-        btn.textContent = `${String.fromCharCode(65 + index)}. ${choices[index]}`;
-        btn.disabled = true; // 初始禁用，等待播放后启用
-        btn.className = 'choice-btn w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-left font-medium';
-        
-        // ✅ 修复：使用闭包正确捕获index
-        btn.onclick = (function(idx) {
-          return function() {
-            submitAnswer(idx);
-          };
-        })(index);
+    const labels  = ['A','B','C','D'];
+
+    buttons.forEach((btn, idx) => {
+      if (idx < choices.length) {
+        btn.textContent = `${labels[idx]}. ${choices[idx]}`;
+        btn.disabled    = true;
+        btn.className   = 'choice-btn w-full py-4 px-5 bg-gray-50 border-2 border-gray-200 rounded-2xl text-left text-xl font-bold opacity-50';
+        btn.onclick = (function(i) {
+          return function() { submitAnswer(i); };
+        })(idx);
       }
     });
-    
-    // 更新问题文本
-    const question = document.getElementById('expQuestion');
-    if (question) {
-      const questions = {
-        1: '请仔细听音频，选择正确词语：',
-        2: '请结合口型信息，选择正确词语：',
-        3: '请注意两个说话人的同步关系：',
-        4: '请定位目标说话人内容：'
+
+    const q = document.getElementById('expQuestion');
+    if (q) {
+      const qs = {
+        1:'请仔细听声音，选出您听到的音节：',
+        2:'请结合口型，选出您看到/听到的音节：',
+        3:'请注意两个说话人的关系，选出目标内容：',
+        4:'请定位目标说话人，选出其内容：'
       };
-      question.textContent = questions[STATE.func] || '请选择正确答案：';
+      q.textContent = qs[STATE.func] || '请选择正确答案：';
     }
   }
-  
+
   // ==================== 播放刺激 ====================
   window.expPlay = async function() {
-    // ★ 强制重置所有播放状态，防止上一个试次的异步操作残留
+    // 防重复
+    if (STATE.isPlaying) return;
+
     STATE.isPlaying = false;
     STATE.isWaitingForResponse = false;
     AudioProcessor.stopAllAudio();
     stopAllVideos();
-    
+
     try {
-      STATE.isPlaying = true;
+      STATE.isPlaying         = true;
       STATE.responseStartTime = Date.now();
-      
-      const trial = STATE.trialQueue[STATE.currentTrialIndex] || STATE.trialQueue[0];
-      
-      if (!trial) {
-        throw new Error('没有当前试次');
-      }
-      
-      // 更新播放按钮状态
+
+      const trial = STATE.trialQueue[STATE.currentTrialIndex];
+      if (!trial) throw new Error('没有当前试次');
+
+      // ★ 新增：在播放前显示题目
+      updateTrialUI(trial);
+
       updatePlayButton(true);
-      
-      // ★ 立即启用选项按钮，让被试在播放过程中就可以选择
+
+      // ★ 关键修复：立即启用选项按钮，不等待播放完毕
       STATE.isWaitingForResponse = true;
       enableChoiceButtons(true);
 
-      // ★ 在播放开始时更新SNR等条件显示
       updateExpConditionDisplay(trial);
 
-      // ★ 记录播放事件
       EventLogger.user('click_play', {
         trial: STATE.currentTrialIndex + 1,
-        snr: trial.snr,
-        blur: trial.blur,
-        soa: trial.soa,
-        attention: trial.attention
+        snr: trial.snr, blur: trial.blur, soa: trial.soa, attention: trial.attention
       });
 
-      // 根据功能模块播放刺激
+      // 根据材料找到对应视频/音频
+      const mat = getMaterialForWord(trial.word);
+
       if (STATE.func === 1) {
-        await AudioProcessor.playMixedAudio(trial.word, trial.snr);
+        // 纯音频，用试次对应音频文件
+        await AudioProcessor.playMixedAudioFile(mat.audio, trial.snr);
       } else if (STATE.func === 2) {
+        // 更新视频为本次试次对应材料
         const video = document.getElementById('expVideo');
+        const src   = document.getElementById('expVideoSrc');
+        if (src && src.src !== new URL(mat.video, location.href).href) {
+          src.src = mat.video;
+          if (video) video.load();
+        }
         if (video) {
           video.currentTime = 0;
           video.style.filter = trial.blur > 0 ? `blur(${trial.blur * Config.BLUR_CSS_FACTOR}px)` : 'none';
           await video.play();
         }
-        await AudioProcessor.playMixedAudio(trial.word, trial.snr);
+        await AudioProcessor.playMixedAudioFile(mat.audio, trial.snr);
       } else if (STATE.func === 3) {
-        // ★ 功能3：基于 AudioContext.currentTime 的精确 SOA 同步
-        await playWithSOA(trial);
+        await playWithSOA(trial, mat);
       } else if (STATE.func === 4) {
-        const targetVideo = document.getElementById('expVideoTarget');
-        if (targetVideo) {
-          targetVideo.currentTime = 0;
-          await targetVideo.play();
+        // ★ 修改：根据 trial.targetSide 动态设置视频源
+        const targetSide = trial.targetSide || 'left';
+        
+        // 更新提示文本
+        const expQuestion = document.getElementById('expQuestion');
+        if (expQuestion) {
+          expQuestion.innerHTML = `请定位<strong>${targetSide === 'left' ? '左侧' : '右侧'}</strong>目标说话人的内容：`;
         }
         
-        if (trial.attention === 'dual') {
-          const distractorVideo = document.getElementById('expVideoDist');
-          if (distractorVideo) {
-            distractorVideo.currentTime = 0;
-            await distractorVideo.play();
+        // 根据目标位置决定哪个视频播放目标材料
+        if (targetSide === 'left') {
+          // 目标在左：左侧播放目标，右侧播放干扰（如果 dual）
+          const targetVideo = document.getElementById('expVideoTarget');
+          const targetSrc   = document.getElementById('expTargetSrc');
+          if (targetSrc) targetSrc.src = mat.video;
+          if (targetVideo) { targetVideo.load(); targetVideo.currentTime = 0; await targetVideo.play(); }
+          
+          if (trial.attention === 'dual') {
+            const distIdx   = (Config.MATERIALS.findIndex(m => m.label === trial.word) + 1) % Config.MATERIALS.length;
+            const distMat   = Config.MATERIALS[distIdx];
+            const distVideo = document.getElementById('expVideoDist');
+            const distSrc   = document.getElementById('expDistSrc');
+            if (distSrc) distSrc.src = distMat.video;
+            if (distVideo) { distVideo.load(); distVideo.currentTime = 0; await distVideo.play(); }
+          }
+        } else {
+          // 目标在右：右侧播放目标，左侧播放干扰（如果 dual）
+          const targetVideo = document.getElementById('expVideoDist');  // 右侧视频
+          const targetSrc   = document.getElementById('expDistSrc');
+          if (targetSrc) targetSrc.src = mat.video;
+          if (targetVideo) { targetVideo.load(); targetVideo.currentTime = 0; await targetVideo.play(); }
+          
+          if (trial.attention === 'dual') {
+            const distIdx   = (Config.MATERIALS.findIndex(m => m.label === trial.word) + 1) % Config.MATERIALS.length;
+            const distMat   = Config.MATERIALS[distIdx];
+            const distVideo = document.getElementById('expVideoTarget'); // 左侧视频
+            const distSrc   = document.getElementById('expTargetSrc');
+            if (distSrc) distSrc.src = distMat.video;
+            if (distVideo) { distVideo.load(); distVideo.currentTime = 0; await distVideo.play(); }
           }
         }
         
-        await AudioProcessor.playMixedAudio(trial.word, trial.snr);
+        await AudioProcessor.playMixedAudioFile(mat.audio, trial.snr);
       }
-      
-      // 音频播放完毕后恢复按钮状态
+
       STATE.isPlaying = false;
       updatePlayButton(false);
-      
-      // 如果用户还没选答案，继续等待（不改变isWaitingForResponse）
-      // 设置超时
+
+      // 超时处理
       setTimeout(() => {
         if (STATE.isWaitingForResponse) {
           EventLogger.user('timeout', { trial: STATE.currentTrialIndex + 1 });
-          submitAnswer(-1); // 超时
+          submitAnswer(-1);
         }
       }, Config.RESPONSE_TIMEOUT);
-      
-    } catch (error) {
-      console.error('播放刺激失败:', error);
+
+    } catch(e) {
+      console.error('[expPlay] 播放失败:', e);
       STATE.isPlaying = false;
       STATE.isWaitingForResponse = false;
       updatePlayButton(false);
-      EventLogger.system('play_error', { error: error.message });
-      UIHelper.showNotification('播放刺激失败', 'error');
+      UIHelper.showNotification('播放失败，请重试', 'error');
     }
   };
-  
-  /**
-   * 功能3专用：基于 AudioContext.currentTime 的毫秒级音画同步
-   *
-   * 实现方案：
-   * 1. 预加载音频为 AudioBuffer（已在 AudioProcessor 中缓存）
-   * 2. 视频先播放（HTML5 video，无法精确控制开始时间）
-   * 3. 在 video.play() resolve 后，使用 setTimeout 精确偏移音频
-   *    （浏览器对 HTML5 video 的 currentTime 精度约 ±20ms）
-   * 4. 音频通过 AudioProcessor.playMixedAudioAt() 在精确的延迟后播放
-   *
-   * @param {Object} trial - 当前试次
-   */
-  async function playWithSOA(trial) {
-    const videoA = document.getElementById('expVideoA');
-    const videoB = document.getElementById('expVideoB');
-    const soa = trial.soa || 0;
 
-    if (!videoA || !videoB) {
-      // 降级：无视频时直接播放音频
-      await AudioProcessor.playMixedAudio(trial.word, trial.snr);
+  /**
+   * 功能3：基于 SOA 的毫秒级音画同步（修改为单个视频窗口）
+   * 功能3只有一个视频窗口，只是视频和音频的延时
+   */
+  async function playWithSOA(trial, mat) {
+    const video = document.getElementById('expVideo3');
+    const soa   = trial.soa || 0;
+    
+    if (!video) {
+      await AudioProcessor.playMixedAudioFile(mat.audio, trial.snr);
       return;
     }
-
-    videoA.currentTime = 0;
-    videoB.currentTime = 0;
-
-    EventLogger.stimulus('soa_start', { soa: soa, trial: STATE.currentTrialIndex + 1 });
-
+    
+    // 功能3 只有一个视频窗口
+    const src = document.getElementById('expVideo3Src');
+    if (src) src.src = mat.video;
+    video.load();
+    
+    video.currentTime = 0;
+    
+    EventLogger.stimulus('soa_start', { soa, trial: STATE.currentTrialIndex + 1 });
+    
+    // 根据SOA值调整视频和音频的播放时序
     if (soa > 0) {
-      // 视频 A 先播放，视频 B 延迟 soa 毫秒，音频与视频 B 同步
-      await videoA.play();
-      await new Promise(resolve => setTimeout(resolve, soa));
-      await videoB.play();
-      await AudioProcessor.playMixedAudio(trial.word, trial.snr);
+      // 视频提前：先播放视频，延迟播放音频
+      await video.play();
+      await new Promise(r => setTimeout(r, soa));
+      await AudioProcessor.playMixedAudioFile(mat.audio, trial.snr);
     } else if (soa < 0) {
-      // 视频 B 先播放，视频 A 延迟 |soa| 毫秒
-      await videoB.play();
-      await new Promise(resolve => setTimeout(resolve, Math.abs(soa)));
-      await videoA.play();
-      await AudioProcessor.playMixedAudio(trial.word, trial.snr);
+      // 音频提前：先播放音频，延迟播放视频
+      const audioPromise = AudioProcessor.playMixedAudioFile(mat.audio, trial.snr);
+      await new Promise(r => setTimeout(r, Math.abs(soa)));
+      await video.play();
+      await audioPromise;
     } else {
-      // SOA = 0：同时播放
-      await Promise.all([videoA.play(), videoB.play()]);
-      await AudioProcessor.playMixedAudio(trial.word, trial.snr);
+      // 同步播放
+      await video.play();
+      await AudioProcessor.playMixedAudioFile(mat.audio, trial.snr);
     }
-
-    EventLogger.stimulus('soa_complete', { soa: soa });
+    
+    EventLogger.stimulus('soa_complete', { soa });
+    
+    // 播放完后停止视频
+    video.pause();
+    video.currentTime = 0;
   }
 
   function updatePlayButton(isPlaying) {
-    const btnIds = ['exp1PlayBtn', 'exp2PlayBtn', 'exp3PlayBtn', 'exp4PlayBtn'];
-    btnIds.forEach(id => {
+    ['exp1PlayBtn','exp2PlayBtn','exp3PlayBtn','exp4PlayBtn'].forEach(id => {
       const btn = document.getElementById(id);
       if (btn) {
         btn.disabled = isPlaying;
         btn.classList.toggle('opacity-50', isPlaying);
+        btn.classList.toggle('play-pulse', !isPlaying);
         if (isPlaying) {
           btn.textContent = '🔊 播放中...';
         } else {
-          btn.textContent = STATE.func === 1 ? '▶️ 播放音频（空格）' :
-                           STATE.func === 3 ? '▶️ 同步播放（空格）' :
-                           '▶️ 播放（空格）';
+          const labels = {1:'▶️ 播放（按空格键）', 2:'▶️ 播放（按空格键）', 3:'▶️ 同步播放（按空格键）', 4:'▶️ 播放（按空格键）'};
+          btn.textContent = labels[STATE.func] || '▶️ 播放';
         }
       }
     });
   }
 
   function updateExpConditionDisplay(trial) {
-    // 功能2：更新SNR和模糊度显示
     if (STATE.func === 2) {
-      const exp2SNR = document.getElementById('exp2SNR');
-      const exp2Blur = document.getElementById('exp2Blur');
-      if (exp2SNR) exp2SNR.textContent = trial.snr + ' dB';
-      if (exp2Blur) exp2Blur.textContent = trial.blur + '%';
+      const e2s = document.getElementById('exp2SNR');
+      const e2b = document.getElementById('exp2Blur');
+      if (e2s) e2s.textContent = trial.snr + ' dB';
+      if (e2b) e2b.textContent = trial.blur + '%';
     }
-    // 功能3：更新SOA显示
     if (STATE.func === 3) {
-      const exp3SOA = document.getElementById('exp3SOA');
-      if (exp3SOA) exp3SOA.textContent = trial.soa + ' ms';
+      const e3s = document.getElementById('exp3SOA');
+      if (e3s) e3s.textContent = trial.soa + ' ms';
     }
-    // 功能4：更新注意条件和SNR显示
     if (STATE.func === 4) {
-      const exp4Att = document.getElementById('exp4Att');
-      const exp4SNR = document.getElementById('exp4SNR');
-      if (exp4Att) exp4Att.textContent = trial.attention === 'single' ? '单说话人' : '双说话人';
-      if (exp4SNR) exp4SNR.textContent = trial.snr + ' dB';
+      const e4a = document.getElementById('exp4Att');
+      const e4s = document.getElementById('exp4SNR');
+      if (e4a) e4a.textContent = trial.attention === 'single' ? '单说话人' : '双说话人';
+      if (e4s) e4s.textContent = trial.snr + ' dB';
     }
-    // 功能1：更新SNR显示
     if (STATE.func === 1) {
-      const expSNRDisplay = document.getElementById('expSNRDisplay');
-      if (expSNRDisplay) expSNRDisplay.textContent = trial.snr + ' dB';
+      const e1s = document.getElementById('expSNRDisplay');
+      if (e1s) e1s.textContent = trial.snr + ' dB';
     }
   }
-  
+
   function enableChoiceButtons(enabled) {
-    const buttons = document.querySelectorAll('#expChoices button');
-    buttons.forEach(btn => {
+    document.querySelectorAll('#expChoices button').forEach(btn => {
       btn.disabled = !enabled;
       if (!enabled) {
-        btn.className = 'choice-btn w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-left font-medium opacity-50';
+        btn.className = 'choice-btn w-full py-4 px-5 bg-gray-50 border-2 border-gray-200 rounded-2xl text-left text-xl font-bold opacity-50';
       } else {
-        btn.className = 'choice-btn w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-left font-medium';
+        btn.className = 'choice-btn w-full py-4 px-5 bg-gray-50 border-2 border-gray-200 rounded-2xl text-left text-xl font-bold cursor-pointer hover:bg-blue-50 hover:border-blue-400';
       }
     });
   }
-  
+
   // ==================== 提交答案 ====================
   function submitAnswer(selectedIndex) {
     if (!STATE.isWaitingForResponse) return;
-    
+
     try {
       STATE.isWaitingForResponse = false;
-      const rt = Date.now() - STATE.responseStartTime;
-      
+      const rt    = STATE.responseStartTime ? Date.now() - STATE.responseStartTime : 0;
       const trial = STATE.trialQueue[STATE.currentTrialIndex];
       if (!trial) return;
-      
+
       const isCorrect = selectedIndex === trial.correctIndex;
-      
-      // 记录结果
+
       const result = {
-        trial: STATE.currentTrialIndex + 1,
-        snr: trial.snr,
-        blur: trial.blur || 0,
-        soa: trial.soa || 0,
-        attention: trial.attention || 'single',
-        correct: isCorrect,
-        selectedIndex: selectedIndex,
+        trial:      STATE.currentTrialIndex + 1,
+        snr:        trial.snr,
+        blur:       trial.blur || 0,
+        soa:        trial.soa  || 0,
+        attention:  trial.attention || 'single',
+        word:       trial.word,
+        correct:    isCorrect,
+        selectedIndex,
         correctIndex: trial.correctIndex,
-        rt: rt > Config.RT_CEIL ? Config.RT_CEIL : rt,
-        choice: selectedIndex >= 0 ? String.fromCharCode(65 + selectedIndex) : 'TIMEOUT',
-        timestamp: Date.now()
+        rt:         rt > Config.RT_CEIL ? Config.RT_CEIL : rt,
+        choice:     selectedIndex >= 0 ? ['A','B','C','D'][selectedIndex] : 'TIMEOUT',
+        timestamp:  Date.now()
       };
-      
+
       STATE.results.push(result);
-      
-      // ★ 立即更新选项按钮样式（高亮正确/错误）
+
+      // ★ 立即渲染按钮颜色（不等 ITI）
       const buttons = document.querySelectorAll('#expChoices button');
       buttons.forEach((btn, idx) => {
         btn.disabled = true;
         if (idx === trial.correctIndex) {
-          btn.className = 'choice-btn w-full p-3 rounded-xl text-left font-bold correct';
+          btn.className = 'choice-btn w-full py-4 px-5 rounded-2xl text-left text-xl font-bold correct';
         } else if (idx === selectedIndex && !isCorrect) {
-          btn.className = 'choice-btn w-full p-3 rounded-xl text-left font-medium wrong';
+          btn.className = 'choice-btn w-full py-4 px-5 rounded-2xl text-left text-xl font-bold wrong';
         } else {
-          btn.className = 'choice-btn w-full p-3 rounded-xl text-left font-medium opacity-50';
+          btn.className = 'choice-btn w-full py-4 px-5 rounded-2xl text-left text-xl font-bold opacity-30';
         }
       });
-      
-      // ★ 显示反馈（带反应时）
-      const feedback = document.getElementById('expFeedback');
-      const feedbackText = document.getElementById('expFeedbackText');
-      if (feedback && feedbackText) {
-        feedback.classList.remove('hidden');
+
+      // ★ 立即显示反馈
+      const fb   = document.getElementById('expFeedback');
+      const fbTx = document.getElementById('expFeedbackText');
+      if (fb && fbTx) {
+        fb.classList.remove('hidden');
         if (isCorrect) {
-          feedback.className = 'mt-3 p-3 rounded-xl text-center bg-green-100';
-          feedbackText.textContent = '✅ 正确！ ' + rt + 'ms';
+          fb.className = 'mt-4 p-4 rounded-2xl text-center bg-green-100 border border-green-300';
+          fbTx.textContent = '✅ 回答正确！';
         } else if (selectedIndex === -1) {
-          feedback.className = 'mt-3 p-3 rounded-xl text-center bg-gray-200';
-          feedbackText.textContent = '⏰ 超时';
+          fb.className = 'mt-4 p-4 rounded-2xl text-center bg-gray-100';
+          fbTx.textContent = '⏰ 超时未作答';
         } else {
-          feedback.className = 'mt-3 p-3 rounded-xl text-center bg-red-100';
-          feedbackText.textContent = '❌ 错误！正确答案是 ' + String.fromCharCode(65 + trial.correctIndex);
+          const correctLabel = ['A','B','C','D'][trial.correctIndex];
+          const correctWord  = (trial.shuffledChoices || trial.choices)[trial.correctIndex];
+          fb.className = 'mt-4 p-4 rounded-2xl text-center bg-red-100 border border-red-300';
+          fbTx.textContent = `❌ 答案是 ${correctLabel}. ${correctWord}`;
         }
       }
-      
-      // 停止音频和视频
+
       AudioProcessor.stopAllAudio();
       stopAllVideos();
-      STATE.isPlaying = false; // ★ 同步重置，防止下一次expPlay被守卫拦截
-      
-      // 更新统计
+      STATE.isPlaying = false;
+
       updateExperimentStats();
-      
-      // 更新进度
+
       STATE.currentTrialIndex++;
-      
-      // 延迟后开始下一个试次（反馈保持可见直到下一个试次）
+
+      // ★ 使用较短 ITI，让病人看到反馈后快速进入下一题
       setTimeout(() => {
         startNextTrial();
       }, Config.ITI);
-      
-    } catch (error) {
-      console.error('提交答案失败:', error);
+
+    } catch(e) {
+      console.error('提交答案失败:', e);
     }
   }
-  
+
   function stopAllVideos() {
-    const videos = document.querySelectorAll('video');
-    videos.forEach(video => {
-      video.pause();
-    });
+    document.querySelectorAll('video').forEach(v => v.pause());
   }
-  
+
   function updateExperimentStats() {
-    const n = STATE.results.length;
-    const correctCount = STATE.results.filter(r => r.correct).length;
-    const accuracy = n > 0 ? Math.round(correctCount / n * 100) : 0;
-    
-    const accElement = document.getElementById('eStatAcc');
-    if (accElement) {
-      accElement.textContent = `${accuracy}%`;
-    }
-    
-    const trialsElement = document.getElementById('eStatTrials');
-    if (trialsElement) {
-      trialsElement.textContent = n;
-    }
+    const n     = STATE.results.length;
+    const corr  = STATE.results.filter(r => r.correct).length;
+    const acc   = n > 0 ? Math.round(corr / n * 100) : 0;
+
+    const accEl = document.getElementById('eStatAcc');
+    if (accEl) accEl.textContent = `${acc}%`;
+
+    const triEl = document.getElementById('eStatTrials');
+    if (triEl) triEl.textContent = n;
   }
-  
-  // ==================== 结果分析 ====================
+
+  // ==================== 结果 ====================
   function showResults() {
-    // 立即停止所有音频和视频
     AudioProcessor.stopAllAudio();
     stopAllVideos();
-    if ('speechSynthesis' in window) {
-      speechSynthesis.cancel();
-    }
+    if ('speechSynthesis' in window) speechSynthesis.cancel();
 
-    // ★ 结束事件记录
     EventLogger.endSession();
 
-    // ★ 自动保存实验数据到历史记录（无需手动导出）
     if (STATE.results.length > 0) {
       try {
-        const fitResult = calculateThreshold();
-        const threshold = extractThresholdValue(fitResult);
-        const metadata = {
+        const fitResult  = calculateThreshold();
+        const threshold  = extractThresholdValue(fitResult);
+        const metadata   = {
           subjectId: STATE.subjectId,
-          phase: STATE.phase,
-          func: STATE.func,
-          snrMode: STATE.snrMode,
-          threshold: threshold,
-          fitResult: fitResult,
-          eventLog: EventLogger.toJSON() // ★ 保存全量事件日志
+          phase:     STATE.phase,
+          func:      STATE.func,
+          snrMode:   STATE.snrMode,
+          threshold, fitResult,
+          eventLog: EventLogger.toJSON()
         };
         DataManager.saveExperimentData(metadata, STATE.results);
-
-        // ★ 下载JSON文件到本地（按被试ID/阶段/模块命名）
         DataManager.downloadToLocal(metadata, STATE.results, fitResult);
-      } catch (err) {
-        console.error('[Save] 自动保存失败:', err);
+      } catch(e) {
+        console.error('[Save] 保存失败:', e);
       }
     }
 
@@ -1101,463 +1408,296 @@
   function updateResultsUI() {
     const results = STATE.results;
     const n = results.length;
-
     if (n === 0) return;
 
-    const correctCount = results.filter(r => r.correct).length;
-    const accuracy = Math.round(correctCount / n * 100);
+    const corr     = results.filter(r => r.correct).length;
+    const accuracy = Math.round(corr / n * 100);
 
-    // 更新结果统计
     const rTotal = document.getElementById('rTotal');
     if (rTotal) rTotal.textContent = n;
-
     const rAcc = document.getElementById('rAcc');
     if (rAcc) rAcc.textContent = `${accuracy}%`;
 
-    // 计算平均反应时
     const validRTs = results.filter(r => r.rt < 10000).map(r => r.rt);
-    const avgRT = validRTs.length > 0 ? Math.round(validRTs.reduce((a, b) => a + b, 0) / validRTs.length) : 0;
-
+    const avgRT    = validRTs.length > 0 ? Math.round(validRTs.reduce((a,b)=>a+b,0)/validRTs.length) : 0;
     const rRT = document.getElementById('rRT');
     if (rRT) rRT.textContent = `${avgRT}ms`;
 
-    // 计算实验时长
     const startTime = results[0].timestamp;
-    const endTime = results[results.length - 1].timestamp;
-    const durationMin = Math.round((endTime - startTime) / 60000);
-    const rDuration = document.getElementById('rDuration');
-    if (rDuration) rDuration.textContent = durationMin > 0 ? `${durationMin}min` : '<1min';
+    const endTime   = results[results.length-1].timestamp;
+    const durMin    = Math.round((endTime - startTime) / 60000);
+    const rDur = document.getElementById('rDuration');
+    if (rDur) rDur.textContent = durMin > 0 ? `${durMin}min` : '<1min';
 
-    // 更新结果副标题
-    const funcNames = { 1: '功能一', 2: '功能二', 3: '功能三', 4: '功能四' };
-    const phaseNames = { pre: '训练前测试', train: '训练中', post: '训练后测试' };
-    const resSubtitle = document.getElementById('resSubtitle');
-    if (resSubtitle) {
-      resSubtitle.textContent = `被试 ${STATE.subjectId} · ${funcNames[STATE.func]} · ${phaseNames[STATE.phase]}`;
+    // 鼓励语
+    const msg = document.getElementById('encourageMsg');
+    if (msg) {
+      const phaseMsg = {
+        pre:   '基线测试完成，请告知工作人员，准备开始训练。',
+        train: `训练完成！您的正确率是 ${accuracy}%，继续加油！`,
+        post:  `后测完成，正确率 ${accuracy}%。请告知工作人员查看您的进步情况。`
+      };
+      msg.querySelector('div').textContent = phaseMsg[STATE.phase] || '本次训练已完成，请告知工作人员。';
     }
 
-    // ★ 填充行为数据详情表格
+    const funcNames  = { 1:'功能一', 2:'功能二', 3:'功能三', 4:'功能四' };
+    const phaseNames = { pre:'训练前测试', train:'训练中', post:'训练后测试' };
+    const resSubtitle = document.getElementById('resSubtitle');
+    if (resSubtitle) resSubtitle.textContent = `被试 ${STATE.subjectId} · ${funcNames[STATE.func]} · ${phaseNames[STATE.phase]}`;
+
     renderResultsTable();
-
-    // ★ 计算并显示阈值
     renderThreshold();
-
-    // 渲染图表
     renderResultsCharts();
   }
 
   function renderResultsTable() {
-    const results = STATE.results;
     const tbody = document.getElementById('resTableBody');
     const thead = document.getElementById('resTableHead');
     if (!tbody) return;
 
-    // 根据功能模块显示不同的表头
-    const funcNames = { 1: '功能一', 2: '功能二', 3: '功能三', 4: '功能四' };
     if (thead) {
-      let headerHTML = '<th class="p-2 text-left">试次</th><th class="p-2 text-left">SNR</th>';
-      if (STATE.func === 2 || STATE.func === 3) headerHTML += '<th class="p-2 text-left">模糊度</th>';
-      if (STATE.func === 3) headerHTML += '<th class="p-2 text-left">SOA</th>';
-      if (STATE.func === 4) headerHTML += '<th class="p-2 text-left">注意条件</th>';
-      headerHTML += '<th class="p-2 text-left">正确</th><th class="p-2 text-left">反应时</th><th class="p-2 text-left">选择</th>';
-      thead.innerHTML = headerHTML;
+      let h = '<th class="p-2 text-left">题次</th><th class="p-2 text-left">SNR</th>';
+      if (STATE.func === 2 || STATE.func === 3) h += '<th class="p-2 text-left">模糊</th>';
+      if (STATE.func === 3) h += '<th class="p-2 text-left">SOA</th>';
+      if (STATE.func === 4) h += '<th class="p-2 text-left">条件</th>';
+      h += '<th class="p-2 text-left">词语</th><th class="p-2 text-left">正确</th><th class="p-2 text-left">反应时</th>';
+      thead.innerHTML = h;
     }
 
-    // 渲染每行数据
-    let rowsHTML = '';
-    results.forEach((r, idx) => {
-      const correctBadge = r.correct
-        ? '<span class="px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs">正确</span>'
+    tbody.innerHTML = STATE.results.map(r => {
+      const badge = r.correct
+        ? '<span class="px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs">✅</span>'
         : (r.choice === 'TIMEOUT'
-          ? '<span class="px-2 py-0.5 bg-gray-200 text-gray-500 rounded text-xs">超时</span>'
-          : '<span class="px-2 py-0.5 bg-red-100 text-red-600 rounded text-xs">错误</span>');
+          ? '<span class="px-2 py-0.5 bg-gray-200 text-gray-500 rounded text-xs">⏰</span>'
+          : '<span class="px-2 py-0.5 bg-red-100 text-red-600 rounded text-xs">❌</span>');
 
       let row = `<tr class="border-t hover:bg-gray-50">
         <td class="p-2">${r.trial}</td>
         <td class="p-2">${r.snr} dB</td>`;
-
-      if (STATE.func === 2 || STATE.func === 3) {
-        row += `<td class="p-2">${r.blur}%</td>`;
-      }
-      if (STATE.func === 3) {
-        row += `<td class="p-2">${r.soa} ms</td>`;
-      }
-      if (STATE.func === 4) {
-        row += `<td class="p-2">${r.attention === 'single' ? '单说话人' : '双说话人'}</td>`;
-      }
-
-      row += `<td class="p-2">${correctBadge}</td>
+      if (STATE.func === 2 || STATE.func === 3) row += `<td class="p-2">${r.blur}%</td>`;
+      if (STATE.func === 3)  row += `<td class="p-2">${r.soa} ms</td>`;
+      if (STATE.func === 4)  row += `<td class="p-2">${r.attention === 'single' ? '单' : '双'}</td>`;
+      row += `<td class="p-2">${r.word || '--'}</td>
+        <td class="p-2">${badge}</td>
         <td class="p-2">${r.rt < 10000 ? r.rt + 'ms' : '--'}</td>
-        <td class="p-2">${r.choice}</td>
       </tr>`;
-
-      rowsHTML += row;
-    });
-
-    tbody.innerHTML = rowsHTML;
+      return row;
+    }).join('');
   }
 
   function renderThreshold() {
     const fitResult = calculateThreshold();
     const rThreshold = document.getElementById('rThreshold');
     const rThresholdLabel = document.getElementById('rThresholdLabel');
-    const rThresholdDesc = document.getElementById('rThresholdDesc');
+    const rThresholdDesc  = document.getElementById('rThresholdDesc');
     if (!rThreshold) return;
 
     const funcConfig = {
-      1: { label: '噪音阈值 (SNR)', unit: 'dB', desc: 'Logistic拟合 80%正确率对应的SNR值' },
-      2: { label: '视觉增益', unit: 'dB', desc: '清晰口型阈值 - 模糊口型阈值的SNR差值' },
-      3: { label: '整合时窗', unit: 'ms', desc: '正确率≥80%的SOA范围宽度' },
-      4: { label: '干扰抑制成本', unit: 'dB', desc: '双说话人阈值 - 单说话人阈值的SNR差值' }
+      1: { label:'噪音阈值 (SNR)', unit:'dB', desc:'Logistic拟合 80%正确率对应的SNR' },
+      2: { label:'视觉增益', unit:'dB', desc:'清晰 vs 模糊口型的SNR差值' },
+      3: { label:'整合时窗', unit:'ms', desc:'正确率≥80%的SOA范围' },
+      4: { label:'干扰抑制成本', unit:'dB', desc:'双说话人 - 单说话人的SNR差值' }
     };
-
     const info = funcConfig[STATE.func];
     if (rThresholdLabel) rThresholdLabel.textContent = info.label;
-    if (rThresholdDesc) rThresholdDesc.textContent = info.desc;
+    if (rThresholdDesc)  rThresholdDesc.textContent  = info.desc;
 
-    // 根据模块提取阈值数值
-    let thresholdValue = null;
-    let extraInfo = '';
-
+    let val = null;
     if (fitResult) {
-      if (STATE.func === 1) {
-        thresholdValue = fitResult.threshold;
-        extraInfo = `α=${fitResult.alpha.toFixed(2)} β=${fitResult.beta.toFixed(3)} R²=${fitResult.r2.toFixed(3)}`;
-      } else if (STATE.func === 2) {
-        thresholdValue = fitResult.gain;
-        extraInfo = fitResult.gain !== null
-          ? `清晰α=${fitResult.fitClear?.threshold?.toFixed(1)} 模糊α=${fitResult.fitBlur?.threshold?.toFixed(1)}`
-          : '';
-      } else if (STATE.func === 3) {
-        thresholdValue = fitResult.window;
-        extraInfo = fitResult.lowerSOA !== null ? `${fitResult.lowerSOA}~${fitResult.upperSOA}ms` : '';
-      } else if (STATE.func === 4) {
-        thresholdValue = fitResult.cost;
-        extraInfo = fitResult.cost !== null
-          ? `单α=${fitResult.fitSingle?.threshold?.toFixed(1)} 双α=${fitResult.fitDual?.threshold?.toFixed(1)}`
-          : '';
-      }
+      if (STATE.func === 1) val = fitResult.threshold;
+      else if (STATE.func === 2) val = fitResult.gain;
+      else if (STATE.func === 3) val = fitResult.window;
+      else if (STATE.func === 4) val = fitResult.cost;
     }
 
-    if (thresholdValue !== null && thresholdValue !== undefined) {
-      rThreshold.textContent = `${thresholdValue.toFixed(2)} ${info.unit}`;
-      rThreshold.title = extraInfo || info.desc;
-      // 显示拟合参数
-      const note = document.getElementById('psychCurveNote');
-      if (note && extraInfo) {
-        note.textContent = `${extraInfo} · P(x) = γ + (1-γ-λ)/(1+e^(-β(x-α))) · Nelder-Mead MLE`;
-      }
-    } else {
-      rThreshold.textContent = '--';
-      rThreshold.title = '数据不足以拟合阈值（需要≥2个不同条件各≥3个试次）';
-    }
+    rThreshold.textContent = val !== null && val !== undefined
+      ? `${val.toFixed(2)} ${info.unit}` : '--';
   }
-  
+
   function renderResultsCharts() {
-    // 在psychCurve canvas上绘制心理物理曲线
     const fitResult = calculateThreshold();
-    const canvas = document.getElementById('psychCurve');
+    const canvas    = document.getElementById('psychCurve');
     if (!canvas || !fitResult) return;
 
     if (STATE.func === 1) {
       Psychometric.drawCurve(canvas, fitResult, {
-        title: '功能一：听觉抗干扰心理物理曲线',
-        xLabel: 'SNR (dB)',
-        yLabel: '正确率',
-        lineColor: '#6366f1'
+        title:'功能一：心理物理曲线', xLabel:'SNR (dB)', yLabel:'正确率', lineColor:'#6366f1'
       });
     } else if (STATE.func === 2 && fitResult.fitClear && fitResult.fitBlur) {
-      // 双曲线：清晰 vs 模糊
       drawDualCurves(canvas, fitResult.fitClear, fitResult.fitBlur, {
-        title: '功能二：视觉增益心理物理曲线',
-        xLabel: 'SNR (dB)',
-        yLabel: '正确率',
-        label1: `清晰口型 (${fitResult.clearBlur}%)`,
-        label2: `模糊口型 (${fitResult.maxBlur}%)`,
-        color1: '#6366f1',
-        color2: '#f59e0b'
+        title:'功能二：视觉增益', xLabel:'SNR (dB)', yLabel:'正确率',
+        label1:`清晰(${fitResult.clearBlur}%)`, label2:`模糊(${fitResult.maxBlur}%)`,
+        color1:'#6366f1', color2:'#f59e0b'
       });
     } else if (STATE.func === 3 && fitResult.fit) {
       Psychometric.drawCurve(canvas, fitResult.fit, {
-        title: '功能三：视听整合时窗心理物理曲线',
-        xLabel: 'SOA (ms)',
-        yLabel: '正确率',
-        lineColor: '#6366f1'
+        title:'功能三：视听整合时窗', xLabel:'SOA (ms)', yLabel:'正确率', lineColor:'#6366f1'
       });
     } else if (STATE.func === 4 && fitResult.fitSingle && fitResult.fitDual) {
       drawDualCurves(canvas, fitResult.fitSingle, fitResult.fitDual, {
-        title: '功能四：注意干扰心理物理曲线',
-        xLabel: 'SNR (dB)',
-        yLabel: '正确率',
-        label1: '单说话人',
-        label2: '双说话人',
-        color1: '#6366f1',
-        color2: '#ef4444'
+        title:'功能四：注意干扰', xLabel:'SNR (dB)', yLabel:'正确率',
+        label1:'单说话人', label2:'双说话人', color1:'#6366f1', color2:'#ef4444'
       });
     }
   }
 
-  /**
-   * 在同一 canvas 上绘制两条对比心理物理曲线
-   */
   function drawDualCurves(canvas, fit1, fit2, opts) {
-    const canvasEl = typeof canvas === 'string' ? document.getElementById(canvas) : canvas;
-    if (!canvasEl || !fit1 || !fit2) return;
-
-    const ctx = canvasEl.getContext('2d');
-    const rect = canvasEl.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
-    canvasEl.width = rect.width * dpr;
-    canvasEl.height = rect.height * dpr;
+    const el = typeof canvas === 'string' ? document.getElementById(canvas) : canvas;
+    if (!el || !fit1 || !fit2) return;
+    const ctx = el.getContext('2d');
+    const rect = el.getBoundingClientRect();
+    const dpr  = window.devicePixelRatio || 1;
+    el.width   = rect.width * dpr;
+    el.height  = rect.height * dpr;
     ctx.scale(dpr, dpr);
+    const W = rect.width, H = rect.height;
+    const mg = { top:50, right:30, bottom:50, left:55 };
+    const pW = W - mg.left - mg.right, pH = H - mg.top - mg.bottom;
 
-    const W = rect.width;
-    const H = rect.height;
-    const margin = { top: 50, right: 30, bottom: 50, left: 55 };
-    const plotW = W - margin.left - margin.right;
-    const plotH = H - margin.top - margin.bottom;
+    ctx.fillStyle = '#fafafa'; ctx.fillRect(0,0,W,H);
 
-    ctx.fillStyle = '#fafafa';
-    ctx.fillRect(0, 0, W, H);
+    const allXs = [...fit1.data.map(d=>d.x), ...fit2.data.map(d=>d.x)];
+    const xMin  = Math.min(...allXs), xMax = Math.max(...allXs);
+    const xPad  = (xMax - xMin) * 0.15;
 
-    // 合并数据范围
-    const allXs = [...fit1.data.map(d => d.x), ...fit2.data.map(d => d.x)];
-    const xMin = Math.min(...allXs);
-    const xMax = Math.max(...allXs);
-    const xPad = (xMax - xMin) * 0.15;
+    const toX = x => mg.left + (x-(xMin-xPad))/(xMax-xMin+2*xPad)*pW;
+    const toY = y => mg.top + pH - y/1.05*pH;
 
-    function toCanvasX(x) { return margin.left + (x - (xMin - xPad)) / (xMax - xMin + 2 * xPad) * plotW; }
-    function toCanvasY(y) { return margin.top + plotH - y / 1.05 * plotH; }
+    ctx.strokeStyle='#e5e7eb'; ctx.lineWidth=0.5;
+    for (let y=0;y<=1;y+=0.25) { ctx.beginPath(); ctx.moveTo(mg.left,toY(y)); ctx.lineTo(W-mg.right,toY(y)); ctx.stroke(); }
 
-    // 网格
-    ctx.strokeStyle = '#e5e7eb';
-    ctx.lineWidth = 0.5;
-    for (let y = 0; y <= 1; y += 0.25) {
-      const cy = toCanvasY(y);
-      ctx.beginPath(); ctx.moveTo(margin.left, cy); ctx.lineTo(W - margin.right, cy); ctx.stroke();
-    }
+    ctx.strokeStyle='#10b981'; ctx.lineWidth=1; ctx.setLineDash([6,4]);
+    ctx.beginPath(); ctx.moveTo(mg.left,toY(.8)); ctx.lineTo(W-mg.right,toY(.8)); ctx.stroke();
+    ctx.setLineDash([]); ctx.fillStyle='#10b981'; ctx.font='11px sans-serif'; ctx.textAlign='left';
+    ctx.fillText('80%',W-mg.right-35,toY(.8)-5);
 
-    const xStep = 3;
-    for (let x = Math.ceil((xMin - xPad) / xStep) * xStep; x <= xMax + xPad; x += xStep) {
-      const cx = toCanvasX(x);
-      ctx.beginPath(); ctx.moveTo(cx, margin.top); ctx.lineTo(cx, margin.top + plotH); ctx.stroke();
-    }
-
-    // 80% 标准线
-    ctx.strokeStyle = '#10b981';
-    ctx.lineWidth = 1;
-    ctx.setLineDash([6, 4]);
-    const critY = toCanvasY(0.80);
-    ctx.beginPath(); ctx.moveTo(margin.left, critY); ctx.lineTo(W - margin.right, critY); ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle = '#10b981';
-    ctx.font = '11px sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText('80% 标准', W - margin.right - 60, critY - 5);
-
-    // 猜测率线
-    const guessY = toCanvasY(0.25);
-    ctx.strokeStyle = '#94a3b8';
-    ctx.lineWidth = 0.8;
-    ctx.setLineDash([3, 3]);
-    ctx.beginPath(); ctx.moveTo(margin.left, guessY); ctx.lineTo(W - margin.right, guessY); ctx.stroke();
-    ctx.setLineDash([]);
-
-    // 绘制两条曲线
-    [fit1, fit2].forEach((fit, idx) => {
-      const color = idx === 0 ? opts.color1 : opts.color2;
-      const points = Psychometric.generateCurvePoints(fit, 200);
-      if (points.length > 0) {
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 2.5;
-        ctx.beginPath();
-        points.forEach((pt, i) => {
-          const cx = toCanvasX(pt.x);
-          const cy = toCanvasY(pt.y);
-          if (i === 0) ctx.moveTo(cx, cy);
-          else ctx.lineTo(cx, cy);
-        });
+    [fit1,fit2].forEach((fit,idx) => {
+      const color = idx===0 ? opts.color1 : opts.color2;
+      const pts   = Psychometric.generateCurvePoints(fit,200);
+      if (pts.length>0) {
+        ctx.strokeStyle=color; ctx.lineWidth=2.5; ctx.beginPath();
+        pts.forEach((pt,i)=>{ const cx=toX(pt.x),cy=toY(pt.y); i===0?ctx.moveTo(cx,cy):ctx.lineTo(cx,cy); });
         ctx.stroke();
       }
-
-      // 数据点
-      fit.data.forEach(d => {
-        const cx = toCanvasX(d.x);
-        const cy = toCanvasY(d.k / d.n);
-        const r = Math.max(3, Math.min(7, Math.sqrt(d.n) * 1.3));
-        ctx.beginPath();
-        ctx.arc(cx, cy, r, 0, Math.PI * 2);
-        ctx.fillStyle = color;
-        ctx.fill();
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1;
-        ctx.stroke();
+      fit.data.forEach(d=>{
+        const cx=toX(d.x), cy=toY(d.k/d.n), r=Math.max(3,Math.min(7,Math.sqrt(d.n)*1.3));
+        ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fillStyle=color; ctx.fill();
+        ctx.strokeStyle='#fff'; ctx.lineWidth=1; ctx.stroke();
       });
     });
 
-    // 坐标轴
-    ctx.strokeStyle = '#374151';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(margin.left, margin.top);
-    ctx.lineTo(margin.left, margin.top + plotH);
-    ctx.lineTo(W - margin.right, margin.top + plotH);
-    ctx.stroke();
+    ctx.strokeStyle='#374151'; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.moveTo(mg.left,mg.top); ctx.lineTo(mg.left,mg.top+pH); ctx.lineTo(W-mg.right,mg.top+pH); ctx.stroke();
+    ctx.fillStyle='#374151'; ctx.font='bold 12px sans-serif'; ctx.textAlign='center';
+    ctx.fillText(opts.xLabel,W/2,H-8); ctx.fillText(opts.title,W/2,18);
+    ctx.save(); ctx.translate(14,H/2); ctx.rotate(-Math.PI/2); ctx.fillText(opts.yLabel,0,0); ctx.restore();
 
-    // 标签
-    ctx.fillStyle = '#374151';
-    ctx.font = 'bold 12px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(opts.xLabel, W / 2, H - 8);
-    ctx.save();
-    ctx.translate(14, H / 2);
-    ctx.rotate(-Math.PI / 2);
-    ctx.fillText(opts.yLabel, 0, 0);
-    ctx.restore();
-
-    // 标题
-    ctx.font = 'bold 13px sans-serif';
-    ctx.fillText(opts.title, W / 2, 18);
+    ctx.fillStyle='#6b7280'; ctx.font='11px sans-serif'; ctx.textAlign='center';
+    const step=3;
+    for (let x=Math.ceil((xMin-xPad)/step)*step; x<=xMax+xPad; x+=step) ctx.fillText(x.toFixed(0),toX(x),mg.top+pH+18);
+    ctx.textAlign='right';
+    for (let y=0;y<=1;y+=0.25) ctx.fillText((y*100).toFixed(0)+'%',mg.left-8,toY(y)+4);
 
     // 图例
-    const legX = margin.left + 10;
-    const legY = margin.top + 12;
-    ctx.fillStyle = 'rgba(255,255,255,0.8)';
-    ctx.fillRect(legX, legY - 12, 180, 40);
-    ctx.strokeStyle = '#d1d5db';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(legX, legY - 12, 180, 40);
-
-    ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.moveTo(legX + 8, legY); ctx.lineTo(legX + 30, legY); ctx.strokeStyle = opts.color1; ctx.stroke();
-    ctx.fillStyle = '#374151';
-    ctx.font = '11px sans-serif';
-    ctx.textAlign = 'left';
-    const label1Text = opts.label1 + (fit1.threshold !== null ? ` α=${fit1.threshold.toFixed(1)}` : '');
-    ctx.fillText(label1Text, legX + 36, legY + 4);
-
-    ctx.beginPath(); ctx.moveTo(legX + 8, legY + 18); ctx.lineTo(legX + 30, legY + 18); ctx.strokeStyle = opts.color2; ctx.stroke();
-    const label2Text = opts.label2 + (fit2.threshold !== null ? ` α=${fit2.threshold.toFixed(1)}` : '');
-    ctx.fillText(label2Text, legX + 36, legY + 22);
-
-    // 刻度
-    ctx.font = '11px sans-serif';
-    ctx.fillStyle = '#6b7280';
-    ctx.textAlign = 'center';
-    for (let x = Math.ceil((xMin - xPad) / xStep) * xStep; x <= xMax + xPad; x += xStep) {
-      ctx.fillText(x.toFixed(0), toCanvasX(x), margin.top + plotH + 18);
-    }
-    ctx.textAlign = 'right';
-    for (let y = 0; y <= 1; y += 0.25) {
-      ctx.fillText((y * 100).toFixed(0) + '%', margin.left - 8, toCanvasY(y) + 4);
-    }
+    const legX=mg.left+10, legY=mg.top+12;
+    ctx.fillStyle='rgba(255,255,255,.85)'; ctx.fillRect(legX,legY-12,180,40);
+    ctx.strokeStyle='#d1d5db'; ctx.lineWidth=1; ctx.strokeRect(legX,legY-12,180,40);
+    [[opts.label1,opts.color1,0],[opts.label2,opts.color2,18]].forEach(([lb,cl,dy])=>{
+      ctx.strokeStyle=cl; ctx.lineWidth=3;
+      ctx.beginPath(); ctx.moveTo(legX+8,legY+dy); ctx.lineTo(legX+30,legY+dy); ctx.stroke();
+      ctx.fillStyle='#374151'; ctx.font='11px sans-serif'; ctx.textAlign='left';
+      ctx.fillText(lb,legX+36,legY+dy+4);
+    });
   }
-  
-  // ==================== 历史记录 ====================
+
+  // ==================== 历史记录（兼容旧调用，跳转新页面） ====================
   window.showHistory = function() {
-    UIHelper.showScreen('history');
-    updateHistoryUI();
+    window.location.href = 'history.html';
   };
-  
-  function updateHistoryUI() {
-    const historyHTML = DataManager.generateHistoryHTML();
-    const historyContent = document.getElementById('historyContent');
-    if (historyContent) {
-      historyContent.innerHTML = historyHTML;
-    }
-  }
-  
+
   // ==================== 键盘快捷键 ====================
   function handleKeyPress(event) {
-    // 忽略在输入框中的按键
-    if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') {
-      return;
-    }
-    
+    if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') return;
     const key = event.key.toLowerCase();
-    
-    // 空格键：播放（仅在实验屏幕且未播放且未等待响应时）
+
     if (key === ' ') {
       event.preventDefault();
-      if (!STATE.isPlaying && !STATE.isWaitingForResponse) {
-        window.expPlay();
-      }
+      if (!STATE.isPlaying && !STATE.isWaitingForResponse) window.expPlay();
     }
-    
-    // A/B/C/D：选择答案
-    if (['a', 'b', 'c', 'd'].includes(key)) {
-      const index = key.charCodeAt(0) - 97; // a=0, b=1, c=2, d=3
-      if (STATE.isWaitingForResponse) {
-        submitAnswer(index);
-      }
+    if (['a','b','c','d'].includes(key)) {
+      const idx = key.charCodeAt(0) - 97;
+      if (STATE.isWaitingForResponse) submitAnswer(idx);
     }
-    
-    // ESC：退出
     if (key === 'escape') {
-      if (confirm('确定要退出实验吗？')) {
-        showResults();
-      }
+      if (confirm('确定要退出吗？')) showResults();
     }
   }
-  
+
+  // ==================== Hash 导航（浏览器前进/后退） ====================
+  function handleHashChange() {
+    const hash = window.location.hash.slice(1);
+    if (hash && ['quick','guide','menu','prep','generate','exp','results','history'].includes(hash)) {
+      UIHelper.showScreen(hash);
+    }
+  }
+
   // ==================== 数据导出 ====================
   window.exportResults = function() {
     try {
       const metadata = {
-        subjectId: STATE.subjectId,
-        phase: STATE.phase,
-        func: STATE.func,
-        snrMode: STATE.snrMode,
+        subjectId: STATE.subjectId, phase: STATE.phase,
+        func: STATE.func, snrMode: STATE.snrMode,
         threshold: calculateThreshold()
       };
-      
       DataManager.saveExperimentData(metadata, STATE.results);
-      UIHelper.showNotification('数据已保存并导出', 'success');
-    } catch (error) {
-      console.error('导出失败:', error);
+      UIHelper.showNotification('数据已保存', 'success');
+    } catch(e) {
       UIHelper.showNotification('导出失败', 'error');
     }
   };
-  
+
   function calculateThreshold() {
-    // 使用 STATE.results 而非模块内部results（因为实际数据存在STATE中）
     if (STATE.results.length < 5) return null;
-
-    if (STATE.func === 1) {
-      return Module1.calculateThreshold(STATE.results);
-    } else if (STATE.func === 2) {
-      return Module2.calculateVisualGain(STATE.results);
-    } else if (STATE.func === 3) {
-      return Module3.calculateIntegrationWindow(STATE.results);
-    } else if (STATE.func === 4) {
-      return Module4.calculateInterferenceSuppressionCost(STATE.results);
-    }
+    if (STATE.func === 1) return Module1.calculateThreshold(STATE.results);
+    if (STATE.func === 2) return Module2.calculateVisualGain(STATE.results);
+    if (STATE.func === 3) return Module3.calculateIntegrationWindow(STATE.results);
+    if (STATE.func === 4) return Module4.calculateInterferenceSuppressionCost(STATE.results);
     return null;
   }
 
-  /**
-   * 从拟合结果中提取纯数值阈值（用于 metadata 存储）
-   */
-  function extractThresholdValue(fitResult) {
-    if (!fitResult) return null;
-    if (fitResult.threshold !== undefined) return fitResult.threshold; // func1
-    if (fitResult.gain !== undefined) return fitResult.gain; // func2
-    if (fitResult.window !== undefined) return fitResult.window; // func3
-    if (fitResult.cost !== undefined) return fitResult.cost; // func4
+  function extractThresholdValue(fit) {
+    if (!fit) return null;
+    if (fit.threshold !== undefined) return fit.threshold;
+    if (fit.gain      !== undefined) return fit.gain;
+    if (fit.window    !== undefined) return fit.window;
+    if (fit.cost      !== undefined) return fit.cost;
     return null;
   }
-  
+
   // ==================== 实用函数 ====================
-  window.goToMenu = function() {
-    UIHelper.showScreen('menu');
+  window.goToQuickScreen = function() { 
+    UIHelper.showScreen('quick'); 
   };
   
+  window.goToMenu = function() { UIHelper.showScreen('menu'); };
+
   window.confirmQuit = function() {
-    UIHelper.showConfirm('确定要退出实验吗？当前进度将保存。', () => {
+    UIHelper.showConfirm('确定要退出吗？当前进度将保存。', () => {
       exportResults();
       showResults();
     });
   };
-  
-  console.log('app.js 加载完成');
+
+  function getSelectedValues(selector) {
+    return Array.from(document.querySelectorAll(selector))
+      .filter(el => el.checked)
+      .map(el => el.value.trim())
+      .map(v => isNaN(v) ? v : parseInt(v));
+  }
+
+  // 兼容旧接口（管理员页面可能调用）
+  window.updateSNRSettings = function() {};
+  window.setOrder = function() {};
+
+  console.log('app.js v3.1 加载完成');
 })();
