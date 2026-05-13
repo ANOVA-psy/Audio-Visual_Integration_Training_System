@@ -21,6 +21,7 @@
     results: [],
     isPlaying: false,
     isWaitingForResponse: false,
+    isReadyForPlay: false,
     responseStartTime: null,
 
     adaptive: {
@@ -185,7 +186,7 @@
 
     // 功能二默认模糊度
     document.querySelectorAll('.blur-lvl').forEach(cb => {
-      cb.checked = ['0','20','40'].includes(cb.value);
+      cb.checked = ['0','4','8','12','16','20'].includes(cb.value);
     });
 
     // 功能三默认 SOA
@@ -954,24 +955,15 @@
 
   function updateExperimentUI() {
     const funcNames  = { 1:'功能一', 2:'功能二', 3:'功能三', 4:'功能四' };
-    const phaseNames = { pre:'训练前测试', train:'训练中', post:'训练后测试' };
-    const phaseEmoji = { pre:'📊', train:'🏋️', post:'📈' };
 
     const expTitleBar = document.getElementById('expTitleBar');
-    if (expTitleBar) expTitleBar.textContent = `${phaseEmoji[STATE.phase]} ${phaseNames[STATE.phase]} · ${funcNames[STATE.func]}`;
+    if (expTitleBar) expTitleBar.textContent = funcNames[STATE.func];
 
     const expSubtitleBar = document.getElementById('expSubtitleBar');
     if (expSubtitleBar) expSubtitleBar.textContent = `被试 ${STATE.subjectId}`;
 
     const phaseTag = document.getElementById('expPhaseTag');
-    if (phaseTag) phaseTag.textContent = phaseNames[STATE.phase];
-
-    const expPhaseCard = document.getElementById('expPhaseCard');
-    if (expPhaseCard) expPhaseCard.textContent = `${phaseEmoji[STATE.phase]} ${phaseNames[STATE.phase]}`;
-
-    const expFuncCard = document.getElementById('expFuncCard');
-    const funcDescs = { 1:'抗干扰', 2:'视觉整合', 3:'异步校准', 4:'注意定位' };
-    if (expFuncCard) expFuncCard.textContent = `${funcNames[STATE.func]} · ${funcDescs[STATE.func]}`;
+    if (phaseTag) phaseTag.textContent = '';
 
     // 显示对应功能视图
     [1,2,3,4].forEach(f => {
@@ -996,9 +988,9 @@
     // 隐藏选项或显示为"待播放"状态
     const buttons = document.querySelectorAll('#expChoices button');
     buttons.forEach(btn => {
-      btn.textContent = '⏳ 等待播放...';
+      btn.textContent = '⏳ 等待...';
       btn.disabled = true;
-      btn.className = 'choice-btn w-full py-4 px-5 bg-gray-200 border-2 border-gray-300 rounded-2xl text-left text-lg font-bold opacity-50';
+      btn.className = 'choice-btn py-2.5 px-3 bg-gray-200 border-2 border-gray-300 rounded-xl text-center text-sm font-bold opacity-50';
     });
     
     console.log('[Trial] 显示播放提示，等待用户点击播放按钮');
@@ -1065,19 +1057,28 @@
 
       // ★ 修改：不在试次开始时显示题目，等用户点击播放按钮后再显示
       // updateTrialUI(trial);
-      
+
       // ★ 新增：只显示"点击播放按钮开始"的提示
       showQuestionPrompt();
-      
+
       STATE.isWaitingForResponse = false;
       STATE.isPlaying            = false;
       STATE.responseStartTime    = null;
+      STATE.isReadyForPlay       = false;
 
       // 等待用户点击播放按钮
       enableChoiceButtons(false);
 
-      // 更新播放按钮为就绪状态
-      updatePlayButton(false);
+      // ★ 播放按钮先禁用，等所有DOM更新完成后再启用
+      updatePlayButtonReady(false);
+
+      // 使用 requestAnimationFrame 确保DOM渲染完成后再启用播放按钮
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          updatePlayButtonReady(true);
+          console.log('[startNextTrial] 播放按钮已就绪');
+        });
+      });
 
     } catch(e) {
       console.error('开始试次失败:', e);
@@ -1087,7 +1088,7 @@
   function resetFeedback() {
     const fb   = document.getElementById('expFeedback');
     const fbTx = document.getElementById('expFeedbackText');
-    if (fb)   { fb.classList.add('hidden'); fb.className = 'mt-4 p-4 rounded-2xl text-center hidden'; }
+    if (fb)   { fb.classList.add('hidden'); fb.className = 'mt-2 p-3 rounded-xl text-center hidden'; }
     if (fbTx) fbTx.textContent = '';
   }
 
@@ -1100,16 +1101,6 @@
 
     const bar = document.getElementById('expProgressBar');
     if (bar) bar.style.width = `${(i / n) * 100}%`;
-
-    const condText = document.getElementById('expConditionText');
-    if (condText) {
-      let t = '';
-      if (STATE.func === 1) t = `SNR: ${trial.snr} dB`;
-      else if (STATE.func === 2) t = `SNR: ${trial.snr} dB | 模糊: ${trial.blur}%`;
-      else if (STATE.func === 3) t = `SNR: ${trial.snr} dB | SOA: ${trial.soa} ms`;
-      else if (STATE.func === 4) t = `SNR: ${trial.snr} dB | ${trial.attention === 'dual' ? '双说话人' : '单说话人'}`;
-      condText.textContent = `条件：${t}`;
-    }
 
     updateChoiceButtons(trial);
   }
@@ -1124,7 +1115,7 @@
       if (idx < choices.length) {
         btn.textContent = `${labels[idx]}. ${choices[idx]}`;
         btn.disabled    = true;
-        btn.className   = 'choice-btn w-full py-4 px-5 bg-gray-50 border-2 border-gray-200 rounded-2xl text-left text-xl font-bold opacity-50';
+        btn.className   = 'choice-btn py-2.5 px-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-center text-base font-bold opacity-50';
         btn.onclick = (function(i) {
           return function() { submitAnswer(i); };
         })(idx);
@@ -1148,6 +1139,8 @@
   window.expPlay = async function() {
     // 防重复
     if (STATE.isPlaying) return;
+    // ★ 防止未就绪时点击（选项和视频还没准备好）
+    if (!STATE.isReadyForPlay) return;
 
     STATE.isPlaying = false;
     STATE.isWaitingForResponse = false;
@@ -1286,6 +1279,8 @@
       
       STATE.isPlaying = false;
       updatePlayButton(false);
+      // ★ 播放完成后禁用播放按钮，等待用户作答
+      updatePlayButtonReady(false);
       
       console.log('[expPlay] 播放完成，等待用户作答...');
     } catch(e) {
@@ -1293,6 +1288,7 @@
       STATE.isPlaying = false;
       STATE.isWaitingForResponse = false;
       updatePlayButton(false);
+      updatePlayButtonReady(false);
       UIHelper.showNotification('播放失败，请重试', 'error');
     }
   };
@@ -1361,6 +1357,21 @@
     });
   }
 
+  /**
+   * 控制播放按钮是否就绪（选项和视频准备完成后才可点击）
+   */
+  function updatePlayButtonReady(ready) {
+    STATE.isReadyForPlay = ready;
+    ['exp1PlayBtn','exp2PlayBtn','exp3PlayBtn','exp4PlayBtn'].forEach(id => {
+      const btn = document.getElementById(id);
+      if (btn) {
+        btn.disabled = !ready;
+        btn.classList.toggle('opacity-50', !ready);
+        btn.classList.toggle('play-pulse', ready);
+      }
+    });
+  }
+
   function updateExpConditionDisplay(trial) {
     if (STATE.func === 2) {
       const e2s = document.getElementById('exp2SNR');
@@ -1369,8 +1380,10 @@
       if (e2b) e2b.textContent = trial.blur + '%';
     }
     if (STATE.func === 3) {
-      const e3s = document.getElementById('exp3SOA');
-      if (e3s) e3s.textContent = trial.soa + ' ms';
+      const e3snr = document.getElementById('exp3SNR');
+      const e3soa = document.getElementById('exp3SOAValue');
+      if (e3snr) e3snr.textContent = trial.snr + ' dB';
+      if (e3soa) e3soa.textContent = trial.soa + ' ms';
     }
     if (STATE.func === 4) {
       const e4a = document.getElementById('exp4Att');
@@ -1388,9 +1401,9 @@
     document.querySelectorAll('#expChoices button').forEach(btn => {
       btn.disabled = !enabled;
       if (!enabled) {
-        btn.className = 'choice-btn w-full py-4 px-5 bg-gray-50 border-2 border-gray-200 rounded-2xl text-left text-xl font-bold opacity-50';
+        btn.className = 'choice-btn py-2.5 px-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-center text-base font-bold opacity-50';
       } else {
-        btn.className = 'choice-btn w-full py-4 px-5 bg-gray-50 border-2 border-gray-200 rounded-2xl text-left text-xl font-bold cursor-pointer hover:bg-blue-50 hover:border-blue-400';
+        btn.className = 'choice-btn py-2.5 px-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-center text-base font-bold cursor-pointer hover:bg-blue-50 hover:border-blue-400';
       }
     });
   }
@@ -1439,11 +1452,11 @@
       buttons.forEach((btn, idx) => {
         btn.disabled = true;
         if (idx === trial.correctIndex) {
-          btn.className = 'choice-btn w-full py-4 px-5 rounded-2xl text-left text-xl font-bold correct';
+          btn.className = 'choice-btn py-2.5 px-3 rounded-xl text-center text-base font-bold correct';
         } else if (idx === selectedIndex && !isCorrect) {
-          btn.className = 'choice-btn w-full py-4 px-5 rounded-2xl text-left text-xl font-bold wrong';
+          btn.className = 'choice-btn py-2.5 px-3 rounded-xl text-center text-base font-bold wrong';
         } else {
-          btn.className = 'choice-btn w-full py-4 px-5 rounded-2xl text-left text-xl font-bold opacity-30';
+          btn.className = 'choice-btn py-2.5 px-3 rounded-xl text-center text-base font-bold opacity-30';
         }
       });
 
@@ -1453,15 +1466,15 @@
       if (fb && fbTx) {
         fb.classList.remove('hidden');
         if (isCorrect) {
-          fb.className = 'mt-4 p-4 rounded-2xl text-center bg-green-100 border border-green-300';
+          fb.className = 'mt-2 p-3 rounded-xl text-center bg-green-100 border border-green-300';
           fbTx.textContent = '✅ 回答正确！';
         } else if (selectedIndex === -1) {
-          fb.className = 'mt-4 p-4 rounded-2xl text-center bg-gray-100';
+          fb.className = 'mt-2 p-3 rounded-xl text-center bg-gray-100';
           fbTx.textContent = '⏰ 超时未作答';
         } else {
           const correctLabel = ['A','B','C','D'][trial.correctIndex];
           const correctWord  = (trial.shuffledChoices || trial.choices)[trial.correctIndex];
-          fb.className = 'mt-4 p-4 rounded-2xl text-center bg-red-100 border border-red-300';
+          fb.className = 'mt-2 p-3 rounded-xl text-center bg-red-100 border border-red-300';
           fbTx.textContent = `❌ 答案是 ${correctLabel}. ${correctWord}`;
         }
       }
@@ -1489,15 +1502,7 @@
   }
 
   function updateExperimentStats() {
-    const n     = STATE.results.length;
-    const corr  = STATE.results.filter(r => r.correct).length;
-    const acc   = n > 0 ? Math.round(corr / n * 100) : 0;
-
-    const accEl = document.getElementById('eStatAcc');
-    if (accEl) accEl.textContent = `${acc}%`;
-
-    const triEl = document.getElementById('eStatTrials');
-    if (triEl) triEl.textContent = n;
+    // Stats display removed per user request
   }
 
   // ==================== 结果 ====================

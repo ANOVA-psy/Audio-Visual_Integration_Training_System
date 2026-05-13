@@ -193,7 +193,7 @@ const DataManager = (function () {
             <td class="p-2">${funcNames[d.metadata.func] || d.metadata.func}</td>
             <td class="p-2">${d.metadata.totalTrials}</td>
             <td class="p-2">${d.metadata.accuracy}%</td>
-            <td class="p-2">${d.metadata.threshold !== null ? d.metadata.threshold.toFixed(1) + ' dB' : '--'}</td>
+            <td class="p-2">${d.metadata.threshold !== null ? d.metadata.threshold.toFixed(2) + ' dB' : '--'}</td>
             <td class="p-2">
               <button onclick="DataManager.viewDetail('${d.id}')"
                       class="text-blue-500 hover:underline mr-2 text-xs">查看</button>
@@ -533,7 +533,7 @@ const DataManager = (function () {
           </div>
           <div class="bg-purple-50 p-2 rounded-lg text-center">
             <div class="text-xs text-gray-500">阈值</div>
-            <div class="font-bold text-purple-600">${data.metadata.threshold !== null ? data.metadata.threshold + (func === 1 ? ' dB' : func === 3 ? ' ms' : '%') : '--'}</div>
+            <div class="font-bold text-purple-600">${data.metadata.threshold !== null ? data.metadata.threshold.toFixed(2) + (func === 1 ? ' dB' : func === 3 ? ' ms' : '%') : '--'}</div>
           </div>
         </div>
         <div class="text-xs text-gray-500 mb-2">${phaseNames[data.metadata.phase] || data.metadata.phase} · ${data.metadata.date} · ${data.metadata.totalTrials}试次</div>
