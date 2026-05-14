@@ -63,7 +63,7 @@ const Config = (function () {
 
   // ==================== 功能一：SNR 档位 ====================
   /** @type {number[]} 全部可选 SNR 级别（dB）- 从容易到难（从大到小） */
-  const SNR_ALL = [12, 9, 6, 3, 0, -3, -6, -9, -12];
+  const SNR_ALL = [12, 9, 6, 3, 0, -3, -6, -9, -12, -18];
 
   /** @type {number[]} 默认启用的 SNR 级别（dB）- 从容易到难 */
   const SNR_DEFAULT = [12, 9, 6, 3, 0, -3, -6, -9, -12];
@@ -72,17 +72,17 @@ const Config = (function () {
   const SNR_STEP = 3;
 
   /** @type {number} SNR 最小值 */
-  const SNR_MIN = -12;
+  const SNR_MIN = -18;
 
   /** @type {number} SNR 最大值 */
   const SNR_MAX = 9;
 
   // ==================== 功能二：口型模糊度 ====================
   /** @type {number[]} 模糊度级别（%），0=清晰 */
-  const BLUR_ALL = [0, 4, 8, 12, 16, 20];
+  const BLUR_ALL = [0, 10, 20, 30, 40, 50, 60];
 
   /** @type {number[]} 默认启用 */
-  const BLUR_DEFAULT = [0, 4, 8, 12, 16, 20];
+  const BLUR_DEFAULT = [0, 10, 20, 30, 40, 50, 60];
 
   /** @type {number} 模糊度→CSS blur px 转换系数 */
   const BLUR_CSS_FACTOR = 0.5;

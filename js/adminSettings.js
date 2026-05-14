@@ -71,8 +71,8 @@ const AdminSettings = (function () {
     return {
       func: func,
       phase: phase,
-      snrLevels:  [12, 9, 6, 3, 0, -3, -6, -9, -12],
-      blurLevels: [0, 4, 8, 12, 16, 20],
+      snrLevels:  [12, 9, 6, 3, 0, -3, -6, -9, -12, -18],
+      blurLevels: [0, 10, 20, 30, 40, 50, 60],
       soaLevels:  [-300, -200, -100, 0, 100, 200, 300],
       attLevels:  ['single', 'dual'],
       repetitions: reps,
