@@ -65,7 +65,7 @@ data/
 **用途**：为每个被试单独存储实验数据，方便查找和管理
 
 **命名规则**：`{phase}_{func}{num}_YYYY-MM-DD.json`
-- `phase`: pre（训练前）/ train（训练中）/ post（训练后）
+- `phase`: pre（训练前）/ train（训练阶段）/ post（训练后）
 - `func`: 1-4（功能编号）
 - `num`: 功能编号
 - `YYYY-MM-DD`: 实验日期

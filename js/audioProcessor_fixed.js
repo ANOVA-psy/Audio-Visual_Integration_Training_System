@@ -160,7 +160,7 @@ const AudioProcessor = (function () {
   // ==================== 任务音频（不使用 Web Audio）====================
   
   function playTaskAudio(text) {
-    return new Promise(function (resolve, reject) {
+    return new Promise(async function (resolve, reject) {
       if (!('speechSynthesis' in window)) {
         reject(new Error('浏览器不支持语音合成'));
         return;
@@ -196,8 +196,8 @@ const AudioProcessor = (function () {
    * ★ 修复版：直接通过 &lt;audio&gt; 元素播放，不经过 Web Audio
    * 这样可以确保信号音一定能听到
    */
-  function playTaskAudioFile(audioPath) {
-    return new Promise(function (resolve, reject) {
+  async function playTaskAudioFile(audioPath) {
+    return new Promise(async function (resolve, reject) {
       try {
         console.log('[Audio] [playTaskAudioFile] ========== 开始 ==========');
         console.log('[Audio] [playTaskAudioFile] 音频路径:', audioPath);
@@ -207,6 +207,19 @@ const AudioProcessor = (function () {
         const audioElement = document.createElement('audio');
         audioElement.style.display = 'none';
         document.body.appendChild(audioElement);
+        
+        // ★ 新增：设置音频输出设备
+        const savedSinkId = localStorage.getItem('audioSinkId') || '';
+        if (savedSinkId && typeof audioElement.setSinkId === 'function') {
+          try {
+            await audioElement.setSinkId(savedSinkId);
+            console.log('[Audio] [playTaskAudioFile] ✓ 设置输出设备:', savedSinkId);
+          } catch (err) {
+            console.warn('[Audio] [playTaskAudioFile] ⚠ 设置输出设备失败:', err);
+          }
+        } else if (savedSinkId) {
+          console.warn('[Audio] [playTaskAudioFile] ⚠ 浏览器不支持 setSinkId');
+        }
         
         let resolved = false;
         
@@ -451,6 +464,46 @@ const AudioProcessor = (function () {
   }
 
   // ==================== 公共 API ===================
+
+  
+  // ==================== 音频输出设备选择 ===================
+  
+  async function enumerateAudioDevices() {
+    try {
+      // 需要先获取用户媒体权限才能看到设备标签
+      try {
+        await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch (e) {
+        console.warn('[Audio] 无法获取麦克风权限，设备标签可能为空');
+      }
+      
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const outputDevices = devices.filter(d => d.kind === 'audiooutput');
+      
+      console.log('[Audio] 可用音频输出设备:', outputDevices);
+      return outputDevices;
+    } catch (err) {
+      console.error('[Audio] 枚举音频设备失败:', err);
+      return [];
+    }
+  }
+  
+  /**
+   * 获取当前音频输出设备ID
+   */
+  function getCurrentSinkId() {
+    return localStorage.getItem('audioSinkId') || '';
+  }
+  
+  /**
+   * 设置音频输出设备
+   * @param {string} sinkId - 设备ID（空字符串表示默认设备）
+   */
+  function setAudioSinkId(sinkId) {
+    localStorage.setItem('audioSinkId', sinkId);
+    console.log('[Audio] 已保存音频输出设备:', sinkId || '（默认）');
+  }
+
   return {
     initAudioContext,
     loadNoise,

@@ -15,11 +15,25 @@ const DataManager = (function () {
      ================================================================== */
 
   function saveExperimentData(metadata, results) {
+    // 尝试从全局 STATE 获取性别和年龄信息
+    let gender = '';
+    let age = '';
+    try {
+      if (typeof STATE !== 'undefined') {
+        gender = STATE.gender || '';
+        age = STATE.age || '';
+      }
+    } catch (e) {
+      console.warn('[DataManager] 无法读取 STATE 中的性别/年龄信息', e);
+    }
+
     const data = {
       id: generateId(),
       timestamp: new Date().toISOString(),
       metadata: {
         subjectId: metadata.subjectId || 'S001',
+        gender: gender,      // 新增：性别
+        age: age,           // 新增：年龄
         date: metadata.date || formatDate(),
         phase: metadata.phase || 'train',
         func: metadata.func || 1,
@@ -135,6 +149,13 @@ const DataManager = (function () {
       const subjectCbId = `cb_subject_${subjectId}`;
       const recordsDivId = `records_${subjectId}`;
 
+      // 从该被试的第一条记录中获取性别和年龄信息
+      const firstRecord = records[0] || {};
+      const metadata = firstRecord.metadata || {};
+      const genderText = metadata.gender === 'male' ? '男' : (metadata.gender === 'female' ? '女' : '');
+      const ageText = metadata.age || '';
+      const quickInfo = (genderText || ageText) ? ` (${[genderText, ageText ? ageText + '岁' : ''].filter(Boolean).join(', ')})` : '';
+
       html += `
         <div class="mb-4 border rounded-xl bg-white shadow-sm">
           <!-- 被试头部（可点击折叠） -->
@@ -144,14 +165,10 @@ const DataManager = (function () {
               <input type="checkbox" id="${subjectCbId}"
                      onchange="DataManager.onSubjectCheckboxChange('${subjectId}')"
                      class="w-5 h-5 cursor-pointer">
-              <span class="font-bold text-lg text-gray-800">被试 ${subjectId}</span>
-              <span class="text-sm text-gray-500">（${records.length} 条记录）</span>
+              <span class="font-bold text-lg text-gray-800">${subjectId}${quickInfo}</span>
+              <span class="text-sm text-gray-400">（${records.length} 条记录）</span>
             </div>
             <div class="flex items-center gap-2" onclick="event.stopPropagation()">
-              <button onclick="DataManager.exportBySubject('${subjectId}')"
-                      class="px-3 py-1 bg-blue-500 text-white rounded-lg text-xs hover:bg-blue-600">
-                导出该被试
-              </button>
               <span id="arrow_${subjectId}" class="text-gray-500 text-sm">▼</span>
             </div>
           </div>
@@ -169,7 +186,6 @@ const DataManager = (function () {
                   <th class="p-2 text-left">功能</th>
                   <th class="p-2 text-left">试次数</th>
                   <th class="p-2 text-left">正确率</th>
-                  <th class="p-2 text-left">阈值</th>
                   <th class="p-2 text-left">操作</th>
                 </tr>
               </thead>
@@ -177,7 +193,7 @@ const DataManager = (function () {
       `;
 
       records.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).forEach(d => {
-        const phaseNames = { pre: '训练前', train: '训练中', post: '训练后' };
+        const phaseNames = { pre: '训练前', train: '训练阶段', post: '训练后' };
         const funcNames = { 1: '功能一', 2: '功能二', 3: '功能三', 4: '功能四' };
         const cbId = `cb_record_${d.id}`;
 
@@ -193,7 +209,6 @@ const DataManager = (function () {
             <td class="p-2">${funcNames[d.metadata.func] || d.metadata.func}</td>
             <td class="p-2">${d.metadata.totalTrials}</td>
             <td class="p-2">${d.metadata.accuracy}%</td>
-            <td class="p-2">${d.metadata.threshold !== null ? d.metadata.threshold.toFixed(1) + ' dB' : '--'}</td>
             <td class="p-2">
               <button onclick="DataManager.viewDetail('${d.id}')"
                       class="text-blue-500 hover:underline mr-2 text-xs">查看</button>
@@ -384,6 +399,13 @@ const DataManager = (function () {
     UIHelper.showNotification(`已导出 ${ids.length} 条记录`, 'success');
   }
 
+  /**
+   * 导出选中的试次记录为JSON（新方法，供按钮调用）
+   */
+  function exportSelectedToJSON() {
+    batchDownload();
+  }
+
   /* ==================================================================
      上传到服务器（支持 ngrok）
      ================================================================== */
@@ -475,7 +497,7 @@ const DataManager = (function () {
     const data = allData.find(d => d.id === id);
     if (!data) { UIHelper.showNotification('数据不存在', 'error'); return; }
 
-    const phaseNames = { pre: '训练前测试', train: '训练中', post: '训练后测试' };
+    const phaseNames = { pre: '训练前测试', train: '训练阶段', post: '训练后测试' };
     const funcNames = { 1: '功能一（抗干扰）', 2: '功能二（视觉整合）', 3: '功能三（异步校准）', 4: '功能四（注意定位）' };
     const func = data.metadata.func;
 
@@ -533,7 +555,7 @@ const DataManager = (function () {
           </div>
           <div class="bg-purple-50 p-2 rounded-lg text-center">
             <div class="text-xs text-gray-500">阈值</div>
-            <div class="font-bold text-purple-600">${data.metadata.threshold !== null ? data.metadata.threshold + (func === 1 ? ' dB' : func === 3 ? ' ms' : '%') : '--'}</div>
+            <div class="font-bold text-purple-600">${data.metadata.threshold !== null ? data.metadata.threshold.toFixed(2) + (func === 1 ? ' dB' : func === 3 ? ' ms' : '%') : '--'}</div>
           </div>
         </div>
         <div class="text-xs text-gray-500 mb-2">${phaseNames[data.metadata.phase] || data.metadata.phase} · ${data.metadata.date} · ${data.metadata.totalTrials}试次</div>
@@ -670,9 +692,9 @@ const DataManager = (function () {
     onHeadCheckboxChange,
     onRecordCheckboxChange,
     selectAll,
-    invertSelection,
     batchDelete,
     batchDownload,
+    exportSelectedToJSON,
     uploadSelected,
     setUploadURL,
     getUploadURL

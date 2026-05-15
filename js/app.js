@@ -12,6 +12,8 @@
   // ==================== 全局状态 ====================
   const STATE = {
     subjectId: 'P001',
+    gender: '',       // 新增：性别
+    age: '',          // 新增：年龄
     phase: 'train',
     func: 1,
     snrMode: 'adaptive',
@@ -58,6 +60,10 @@
     STATE.phase = phase;
     STATE.subjectId = document.getElementById('quickSubjectId')?.value || 'P001';
 
+    // 新增：读取性别和年龄
+    STATE.gender = document.getElementById('quickGender')?.value || '';
+    STATE.age = document.getElementById('quickAge')?.value || '';
+
     // 同步到管理员页被试ID
     const adminSubjectId = document.getElementById('subjectId');
     if (adminSubjectId) adminSubjectId.value = STATE.subjectId;
@@ -82,6 +88,14 @@
     if (guideTitle) guideTitle.textContent = info.title;
     if (guideDesc)  guideDesc.textContent  = info.desc;
 
+    // 新增：显示被试信息
+    const guideSubjectInfo = document.getElementById('guideSubjectInfo');
+    if (guideSubjectInfo) {
+      const genderText = STATE.gender === 'male' ? '男' : (STATE.gender === 'female' ? '女' : '未设置');
+      const ageText = STATE.age || '未设置';
+      guideSubjectInfo.textContent = `被试：${STATE.subjectId} | ${genderText} | ${ageText}岁`;
+    }
+
     // 动态生成训练模块选择
     renderModuleGuide(phase);
   }
@@ -103,18 +117,22 @@
     // 训练阶段默认推荐功能1
     const recommendId = 1;
 
-    area.innerHTML = modules.map(m => `
-      <button onclick="quickSelectModule(${m.id})"
-        class="w-full p-4 rounded-2xl border-2 ${m.id === recommendId ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:border-blue-300'} text-left flex items-center gap-3 transition-all patient-btn">
-        <div class="text-3xl">${m.emoji}</div>
-        <div class="flex-1">
-          <div class="font-bold text-gray-800">${m.name}</div>
-          <div class="text-sm text-gray-500 font-normal">${m.desc}</div>
-        </div>
-        ${m.id === recommendId ? '<span class="text-xs bg-blue-500 text-white px-2 py-0.5 rounded-full">推荐</span>' : ''}
-        <div class="text-2xl text-gray-400">›</div>
-      </button>
-    `).join('');
+    // 改为grid grid-cols-2横排布局，一屏适配
+    area.innerHTML = `
+      <div class="grid grid-cols-2 gap-3 mt-2">
+        ${modules.map(m => `
+          <button onclick="quickSelectModule(${m.id})"
+            class="p-4 rounded-2xl border-2 ${m.id === recommendId ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:border-blue-300'} text-left flex flex-col items-center gap-2 transition-all patient-btn">
+            <div class="text-3xl">${m.emoji}</div>
+            <div class="text-center">
+              <div class="font-bold text-gray-800 text-sm">${m.name}</div>
+              <div class="text-xs text-gray-500 font-normal mt-0.5">${m.desc}</div>
+            </div>
+            ${m.id === recommendId ? '<span class="text-xs bg-blue-500 text-white px-2 py-0.5 rounded-full">推荐</span>' : ''}
+          </button>
+        `).join('')}
+      </div>
+    `;
   }
 
   /**
@@ -389,7 +407,7 @@
   };
 
   function updateConfigSummary() {
-    const phaseNames = { pre:'训练前测试', train:'训练中', post:'训练后测试' };
+    const phaseNames = { pre:'训练前测试', train:'训练阶段', post:'训练后测试' };
     const funcNames  = { 1:'功能一（抗干扰）', 2:'功能二（视觉整合）', 3:'功能三（异步校准）', 4:'功能四（注意定位）' };
     const cfgText = document.getElementById('cfgText');
     if (cfgText) {
@@ -407,7 +425,7 @@
 
   function updatePreparationUI() {
     const funcNames = ['','功能一：抗干扰训练','功能二：视觉整合训练','功能三：异步校准训练','功能四：注意定位训练'];
-    const phaseNames = { pre:'训练前测试', train:'训练中', post:'训练后测试' };
+    const phaseNames = { pre:'训练前测试', train:'训练阶段', post:'训练后测试' };
     
     const prepTitle = document.getElementById('prepTitle');
     if (prepTitle) prepTitle.textContent = `材料准备 · ${funcNames[STATE.func]}`;
@@ -417,11 +435,10 @@
     if (phaseIndicator) phaseIndicator.textContent = phaseNames[STATE.phase];
     
     const varSNR  = document.getElementById('varSNR');
-    const varBlur = document.getElementById('varBlur');
     const varSOA  = document.getElementById('varSOA');
     const varAtt  = document.getElementById('varAtt');
     if (varSNR)  varSNR.classList.remove('hidden');
-    if (varBlur) varBlur.classList.toggle('hidden', STATE.func !== 2 && STATE.func !== 3);
+    // 功能二需要模糊度（在预览界面，不作为独立变量模块）
     if (varSOA)  varSOA.classList.toggle('hidden', STATE.func !== 3);
     if (varAtt)  varAtt.classList.toggle('hidden', STATE.func !== 4);
     
@@ -816,7 +833,7 @@
     if (gc) gc.textContent = trialCount;
 
     const funcNames  = { 1:'功能一：抗干扰训练', 2:'功能二：视觉整合训练', 3:'功能三：异步校准训练', 4:'功能四：注意定位训练' };
-    const phaseNames = { pre:'训练前测试', train:'训练中', post:'训练后测试' };
+    const phaseNames = { pre:'训练前测试', train:'训练阶段', post:'训练后测试' };
     const snrLevels  = getSelectedValues('.snr-lvl');
     const blurLevels = getSelectedValues('.blur-lvl');
     const soaLevels  = getSelectedValues('.soa-lvl');
@@ -899,6 +916,18 @@
           console.error('[Video] 功能2视频加载失败:', mats[0].video);
           UIHelper.showNotification('视频加载失败，请检查文件路径', 'error');
         };
+        // ★ 添加：视频加载完成后启用播放按钮
+        expVideo.onloadeddata = function() {
+          playButtonReady.video = true;
+          checkPlayButtonReady();
+          console.log('[Video] 功能2视频加载完成');
+        };
+        // 保险：如果视频已经加载完成（缓存），直接设置就绪
+        if (expVideo.readyState >= 2) {
+          playButtonReady.video = true;
+          checkPlayButtonReady();
+          console.log('[Video] 功能2视频已缓存，直接就绪');
+        }
       }
     }
 
@@ -912,6 +941,18 @@
         expVideo3.onerror = function() {
           console.error('[Video] 功能3视频加载失败:', mats[0].video);
         };
+        // ★ 添加：视频加载完成后启用播放按钮
+        expVideo3.onloadeddata = function() {
+          playButtonReady.video = true;
+          checkPlayButtonReady();
+          console.log('[Video] 功能3视频加载完成');
+        };
+        // 保险：如果视频已经加载完成（缓存），直接设置就绪
+        if (expVideo3.readyState >= 2) {
+          playButtonReady.video = true;
+          checkPlayButtonReady();
+          console.log('[Video] 功能3视频已缓存，直接就绪');
+        }
       }
     }
 
@@ -927,6 +968,10 @@
         expVideoTarget.onerror = function() {
           console.error('[Video] 功能4目标视频加载失败:', mats[0].video);
         };
+        expVideoTarget.onloadeddata = function() {
+          console.log('[Video] 功能4目标视频加载完成');
+          checkAllVideosReady();
+        };
       }
     }
     if (expDistSrc) {
@@ -936,10 +981,28 @@
         expVideoDist.onerror = function() {
           console.error('[Video] 功能4干扰视频加载失败:', mats[1 % n].video);
         };
+        expVideoDist.onloadeddata = function() {
+          console.log('[Video] 功能4干扰视频加载完成');
+          checkAllVideosReady();
+        };
       }
     }
     
     console.log('[Video] 实验视频源设置完成');
+  }
+
+  /**
+   * 检查功能4的所有视频是否都已加载完成
+   */
+  function checkAllVideosReady() {
+    if (STATE.func !== 4) return;
+    const vT = document.getElementById('expVideoTarget');
+    const vD = document.getElementById('expVideoDist');
+    if (vT && vD && vT.readyState >= 2 && vD.readyState >= 2) {
+      playButtonReady.video = true;
+      checkPlayButtonReady();
+      console.log('[Video] 功能4所有视频加载完成');
+    }
   }
 
   /**
@@ -954,7 +1017,7 @@
 
   function updateExperimentUI() {
     const funcNames  = { 1:'功能一', 2:'功能二', 3:'功能三', 4:'功能四' };
-    const phaseNames = { pre:'训练前测试', train:'训练中', post:'训练后测试' };
+    const phaseNames = { pre:'训练前测试', train:'训练阶段', post:'训练后测试' };
     const phaseEmoji = { pre:'📊', train:'🏋️', post:'📈' };
 
     const expTitleBar = document.getElementById('expTitleBar');
@@ -965,13 +1028,6 @@
 
     const phaseTag = document.getElementById('expPhaseTag');
     if (phaseTag) phaseTag.textContent = phaseNames[STATE.phase];
-
-    const expPhaseCard = document.getElementById('expPhaseCard');
-    if (expPhaseCard) expPhaseCard.textContent = `${phaseEmoji[STATE.phase]} ${phaseNames[STATE.phase]}`;
-
-    const expFuncCard = document.getElementById('expFuncCard');
-    const funcDescs = { 1:'抗干扰', 2:'视觉整合', 3:'异步校准', 4:'注意定位' };
-    if (expFuncCard) expFuncCard.textContent = `${funcNames[STATE.func]} · ${funcDescs[STATE.func]}`;
 
     // 显示对应功能视图
     [1,2,3,4].forEach(f => {
@@ -1023,8 +1079,54 @@
       const trial = STATE.trialQueue[STATE.currentTrialIndex];
 
       // ★ 修复：功能4 试次开始前显示目标位置提示（每次都显示）
+      // ★ 关键修复：先更新视频标签和视频源，再显示提示
       if (STATE.func === 4 && trial) {
         const side = trial.targetSide || 'left';
+        
+        // ★ 先更新视频标签
+        const leftLabel = document.getElementById('expTargetLabel');
+        const rightLabel = document.getElementById('expDistractorLabel');
+        if (leftLabel && rightLabel) {
+          if (side === 'left') {
+            leftLabel.textContent = '👤 目标';
+            leftLabel.className = 'absolute top-1 left-1 bg-blue-600 text-white text-xs px-2 py-0.5 rounded';
+            rightLabel.textContent = '🚫 干扰';
+            rightLabel.className = 'absolute top-1 right-1 bg-red-600 text-white text-xs px-2 py-0.5 rounded';
+          } else {
+            leftLabel.textContent = '🚫 干扰';
+            leftLabel.className = 'absolute top-1 left-1 bg-red-600 text-white text-xs px-2 py-0.5 rounded';
+            rightLabel.textContent = '👤 目标';
+            rightLabel.className = 'absolute top-1 right-1 bg-blue-600 text-white text-xs px-2 py-0.5 rounded';
+          }
+        }
+        
+        // ★ 同时更新视频源
+        const mat = getMaterialForWord(trial.word);
+        if (side === 'left') {
+          const targetSrc = document.getElementById('expTargetSrc');
+          if (targetSrc) targetSrc.src = mat.video;
+          const targetVideo = document.getElementById('expVideoTarget');
+          if (targetVideo) {
+            targetVideo.load();
+            targetVideo.onloadeddata = function() {
+              playButtonReady.video = true;
+              checkPlayButtonReady();
+            };
+          }
+        } else {
+          const distSrc = document.getElementById('expDistSrc');
+          if (distSrc) distSrc.src = mat.video;
+          const distVideo = document.getElementById('expVideoDist');
+          if (distVideo) {
+            distVideo.load();
+            distVideo.onloadeddata = function() {
+              playButtonReady.video = true;
+              checkPlayButtonReady();
+            };
+          }
+        }
+        
+        // 然后显示提示
         const hintText = `📍 本试次请定位${side === 'left' ? '左侧' : '右侧'}目标说话人的内容`;
         
         // 使用覆盖层显示在视频上方
@@ -1075,10 +1177,34 @@
 
       // 等待用户点击播放按钮
       enableChoiceButtons(false);
-
-      // 更新播放按钮为就绪状态
-      updatePlayButton(false);
-
+      
+      // ★ 不重置 playButtonReady.video，因为视频已经在 setupExperimentVideoSources 中加载完成
+      // 如果视频因缓存等原因已就绪，setupExperimentVideoSources 中的保险会设置 playButtonReady.video = true
+      playButtonReady.choices = false;
+      
+      // 更新播放按钮为禁用状态（等待选项就绪）
+      if (!playButtonReady.video) {
+        ['exp1PlayBtn','exp2PlayBtn','exp3PlayBtn','exp4PlayBtn'].forEach(id => {
+          const btn = document.getElementById(id);
+          if (btn) {
+            btn.disabled = true;
+            btn.classList.add('opacity-50');
+            btn.classList.remove('play-pulse');
+            btn.textContent = '⏳ 加载中...';
+          }
+        });
+      }
+      
+      // 如果功能1（无视频），直接标记视频就绪
+      if (STATE.func === 1) {
+        playButtonReady.video = true;
+      }
+      // 对于功能2/3/4，playButtonReady.video 应该已经在 setupExperimentVideoSources 中设置为 true
+      // 如果有缓存等情况，保险检查也会设置
+      
+      // 更新选项按钮（这会设置 playButtonReady.choices = true 并调用 checkPlayButtonReady）
+      updateChoiceButtons(trial);
+      
     } catch(e) {
       console.error('开始试次失败:', e);
     }
@@ -1101,16 +1227,6 @@
     const bar = document.getElementById('expProgressBar');
     if (bar) bar.style.width = `${(i / n) * 100}%`;
 
-    const condText = document.getElementById('expConditionText');
-    if (condText) {
-      let t = '';
-      if (STATE.func === 1) t = `SNR: ${trial.snr} dB`;
-      else if (STATE.func === 2) t = `SNR: ${trial.snr} dB | 模糊: ${trial.blur}%`;
-      else if (STATE.func === 3) t = `SNR: ${trial.snr} dB | SOA: ${trial.soa} ms`;
-      else if (STATE.func === 4) t = `SNR: ${trial.snr} dB | ${trial.attention === 'dual' ? '双说话人' : '单说话人'}`;
-      condText.textContent = `条件：${t}`;
-    }
-
     updateChoiceButtons(trial);
   }
 
@@ -1124,7 +1240,7 @@
       if (idx < choices.length) {
         btn.textContent = `${labels[idx]}. ${choices[idx]}`;
         btn.disabled    = true;
-        btn.className   = 'choice-btn w-full py-4 px-5 bg-gray-50 border-2 border-gray-200 rounded-2xl text-left text-xl font-bold opacity-50';
+        btn.className   = 'choice-btn w-full py-5 px-4 bg-gray-50 border-2 border-gray-200 rounded-2xl text-left text-xl font-bold opacity-50';
         btn.onclick = (function(i) {
           return function() { submitAnswer(i); };
         })(idx);
@@ -1141,6 +1257,10 @@
       };
       q.textContent = qs[STATE.func] || '请选择正确答案：';
     }
+
+    // 标记选项已就绪，检查播放键是否可以启用
+    playButtonReady.choices = true;
+    checkPlayButtonReady();
   }
 
   // 超时计时器 ID（用于取消超时）
@@ -1148,6 +1268,13 @@
   window.expPlay = async function() {
     // 防重复
     if (STATE.isPlaying) return;
+
+    // ★ 新增：检查材料是否准备好
+    if (!playButtonReady.video || !playButtonReady.choices) {
+      UIHelper.showNotification('材料加载中，请稍候...', 'info');
+      console.warn('[expPlay] 材料未就绪', playButtonReady);
+      return;
+    }
 
     STATE.isPlaying = false;
     STATE.isWaitingForResponse = false;
@@ -1301,9 +1428,9 @@
    * 功能3：基于 SOA 的毫秒级音画同步（修改为单个视频窗口）
    * 功能3只有一个视频窗口，只是视频和音频的延时
    */
-  async function playWithSOA(trial, mat) {
+    async function playWithSOA(trial, mat) {
     const video = document.getElementById('expVideo3');
-    const soa   = trial.soa || 0;
+    const soa = trial.soa || 0;
     
     if (!video) {
       await AudioProcessor.playMixedAudioFile(mat.audio, trial.snr);
@@ -1317,7 +1444,7 @@
     
     video.currentTime = 0;
     
-    EventLogger.stimulus('soa_start', { soa, trial: STATE.currentTrialIndex + 1 });
+    EventLogger.stimulus('soa_start', { soa: soa, trial: STATE.currentTrialIndex + 1 });
     
     // 根据SOA值调整视频和音频的播放时序
     if (soa > 0) {
@@ -1325,16 +1452,37 @@
       await video.play();
       await new Promise(r => setTimeout(r, soa));
       await AudioProcessor.playMixedAudioFile(mat.audio, trial.snr);
+      // 等待视频播放完成
+      await new Promise(resolve => {
+        video.onended = resolve;
+        // 超时保护（视频长度+5秒）
+        setTimeout(resolve, 8000);
+      });
     } else if (soa < 0) {
       // 音频提前：先播放音频，延迟播放视频
       const audioPromise = AudioProcessor.playMixedAudioFile(mat.audio, trial.snr);
+      // 不等待音频完成，让音频和视频可以同时播放
+      audioPromise.then(() => {
+        console.log('[playWithSOA] 音频播放完成');
+      }).catch(e => console.error('[playWithSOA] 音频播放失败:', e));
+      
       await new Promise(r => setTimeout(r, Math.abs(soa)));
       await video.play();
-      await audioPromise;
+      // 等待视频播放完成（音频可能已经完成）
+      await new Promise(resolve => {
+        video.onended = resolve;
+        // 超时保护
+        setTimeout(resolve, 8000);
+      });
     } else {
       // 同步播放
       await video.play();
       await AudioProcessor.playMixedAudioFile(mat.audio, trial.snr);
+      // 等待视频播放完成
+      await new Promise(resolve => {
+        video.onended = resolve;
+        setTimeout(resolve, 8000);
+      });
     }
     
     EventLogger.stimulus('soa_complete', { soa });
@@ -1343,6 +1491,10 @@
     video.pause();
     video.currentTime = 0;
   }
+
+
+  // 播放键就绪状态标志
+  let playButtonReady = { video: false, choices: false };
 
   function updatePlayButton(isPlaying) {
     ['exp1PlayBtn','exp2PlayBtn','exp3PlayBtn','exp4PlayBtn'].forEach(id => {
@@ -1361,6 +1513,41 @@
     });
   }
 
+  /**
+   * 检查播放键是否可以启用（需要视频和选项都就绪）
+   */
+  function checkPlayButtonReady() {
+    // 功能1没有视频，只需要选项就绪
+    if (STATE.func === 1) {
+      if (playButtonReady.choices) {
+        updatePlayButton(false);
+        console.log('[PlayButton] 功能1选项就绪，启用播放键');
+      }
+    } else {
+      // 功能2-4需要视频和选项都就绪
+      if (playButtonReady.video && playButtonReady.choices) {
+        updatePlayButton(false);
+        console.log('[PlayButton] 视频和选项都就绪，启用播放键');
+      }
+    }
+  }
+
+  /**
+   * 设置播放键为禁用状态（等待视频和选项加载）
+   */
+  function disablePlayButtonUntilReady() {
+    playButtonReady = { video: false, choices: false };
+    ['exp1PlayBtn','exp2PlayBtn','exp3PlayBtn','exp4PlayBtn'].forEach(id => {
+      const btn = document.getElementById(id);
+      if (btn) {
+        btn.disabled = true;
+        btn.classList.add('opacity-50');
+        btn.classList.remove('play-pulse');
+        btn.textContent = '⏳ 加载中...';
+      }
+    });
+  }
+
   function updateExpConditionDisplay(trial) {
     if (STATE.func === 2) {
       const e2s = document.getElementById('exp2SNR');
@@ -1369,8 +1556,12 @@
       if (e2b) e2b.textContent = trial.blur + '%';
     }
     if (STATE.func === 3) {
-      const e3s = document.getElementById('exp3SOA');
-      if (e3s) e3s.textContent = trial.soa + ' ms';
+      // 更新SNR显示
+      const e3snr = document.getElementById('exp3SNR');
+      if (e3snr) e3snr.textContent = trial.snr + ' dB';
+      // 更新SOA显示
+      const e3soa = document.getElementById('exp3SOAValue');
+      if (e3soa) e3soa.textContent = trial.soa + ' ms';
     }
     if (STATE.func === 4) {
       const e4a = document.getElementById('exp4Att');
@@ -1489,15 +1680,7 @@
   }
 
   function updateExperimentStats() {
-    const n     = STATE.results.length;
-    const corr  = STATE.results.filter(r => r.correct).length;
-    const acc   = n > 0 ? Math.round(corr / n * 100) : 0;
-
-    const accEl = document.getElementById('eStatAcc');
-    if (accEl) accEl.textContent = `${acc}%`;
-
-    const triEl = document.getElementById('eStatTrials');
-    if (triEl) triEl.textContent = n;
+    // 统计信息已移除，不更新UI
   }
 
   // ==================== 结果 ====================
@@ -1567,7 +1750,7 @@
     }
 
     const funcNames  = { 1:'功能一', 2:'功能二', 3:'功能三', 4:'功能四' };
-    const phaseNames = { pre:'训练前测试', train:'训练中', post:'训练后测试' };
+    const phaseNames = { pre:'训练前测试', train:'训练阶段', post:'训练后测试' };
     const resSubtitle = document.getElementById('resSubtitle');
     if (resSubtitle) resSubtitle.textContent = `被试 ${STATE.subjectId} · ${funcNames[STATE.func]} · ${phaseNames[STATE.phase]}`;
 
@@ -1865,3 +2048,93 @@
 
   console.log('app.js v3.1 加载完成');
 })();
+
+// ==================== 音频输出设备选择 ===================
+
+/**
+ * 刷新音频输出设备列表
+ * 需要先获取用户媒体权限才能看到设备标签
+ */
+window.refreshAudioDevices = async function() {
+  const select = document.getElementById('audioOutputSelect');
+  const status = document.getElementById('audioDeviceStatus');
+  
+  if (!select) return;
+  
+  select.innerHTML = '<option value="">默认设备</option>';
+  
+  try {
+    status.textContent = '⏳ 枚举设备中...';
+    
+    // 请求麦克风权限（这样才能看到设备标签）
+    try {
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (e) {
+      console.warn('[Audio] 无法获取麦克风权限，设备标签可能为空');
+    }
+    
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const outputDevices = devices.filter(d => d.kind === 'audiooutput');
+    
+    console.log('[Audio] 可用音频输出设备:', outputDevices);
+    
+    if (outputDevices.length === 0) {
+      status.textContent = '⚠️ 无可用设备';
+      return;
+    }
+    
+    outputDevices.forEach(device => {
+      const option = document.createElement('option');
+      option.value = device.deviceId;
+      option.textContent = device.label || `设备 ${select.options.length}`;
+      select.appendChild(option);
+    });
+    
+    // 恢复之前的选择
+    const savedSinkId = localStorage.getItem('audioSinkId') || '';
+    if (savedSinkId) {
+      select.value = savedSinkId;
+    }
+    
+    status.textContent = `✅ 找到 ${outputDevices.length} 个设备`;
+    
+    // 监听设备变化
+    navigator.mediaDevices.ondevicechange = () => {
+      console.log('[Audio] 音频设备发生变化，自动刷新...');
+      if (window.refreshAudioDevices) window.refreshAudioDevices();
+    };
+    
+  } catch (err) {
+    console.error('[Audio] 枚举音频设备失败:', err);
+    status.textContent = '❌ 枚举失败';
+  }
+};
+
+/**
+ * 切换音频输出设备
+ */
+window.changeAudioOutputDevice = function() {
+  const select = document.getElementById('audioOutputSelect');
+  if (!select) return;
+  
+  const sinkId = select.value;
+  localStorage.setItem('audioSinkId', sinkId);
+  
+  const status = document.getElementById('audioDeviceStatus');
+  if (status) {
+    status.textContent = sinkId ? '✅ 已切换到指定设备' : '✅ 已恢复默认设备';
+  }
+  
+  console.log('[Audio] 音频输出设备已设置为:', sinkId || '（默认）');
+};
+
+// 页面加载时自动枚举设备
+document.addEventListener('DOMContentLoaded', () => {
+  // 延迟一点，确保其他初始化完成
+  setTimeout(() => {
+    if (typeof refreshAudioDevices === 'function') {
+      refreshAudioDevices();
+    }
+  }, 1000);
+});
+

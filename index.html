@@ -121,12 +121,29 @@
         class="w-full px-5 py-4 border-2 border-gray-200 rounded-xl text-xl focus:border-primary focus:outline-none">
     </div>
 
+    <!-- 性别和年龄（同一行） -->
+    <div class="grid grid-cols-2 gap-4 mb-5">
+      <div class="bg-white rounded-2xl shadow p-5">
+        <label class="block text-gray-600 font-semibold mb-2 text-lg">⚥ 性别</label>
+        <select id="quickGender" class="w-full px-4 py-4 border-2 border-gray-200 rounded-xl text-xl focus:border-primary focus:outline-none">
+          <option value="">请选择</option>
+          <option value="male">男</option>
+          <option value="female">女</option>
+        </select>
+      </div>
+      <div class="bg-white rounded-2xl shadow p-5">
+        <label class="block text-gray-600 font-semibold mb-2 text-lg">🎂 年龄</label>
+        <input type="number" id="quickAge" placeholder="请输入年龄" min="1" max="120"
+          class="w-full px-4 py-4 border-2 border-gray-200 rounded-xl text-xl focus:border-primary focus:outline-none">
+      </div>
+    </div>
+
     <!-- 三阶段快速选择 -->
     <div class="bg-white rounded-2xl shadow p-5 mb-5">
       <div class="font-semibold text-gray-700 text-lg mb-4">📋 请选择本次训练阶段</div>
 
       <button onclick="quickStart('pre')" id="qBtn_pre"
-        class="w-full mb-3 p-5 rounded-2xl border-3 border-2 border-indigo-300 text-left flex items-center gap-4 hover:bg-indigo-50 transition-all patient-btn">
+        class="w-full mb-3 p-5 rounded-2xl border-2 border-indigo-300 text-left flex items-center gap-4 hover:bg-indigo-50 transition-all patient-btn">
         <div class="text-4xl">📊</div>
         <div>
           <div class="text-xl font-bold text-indigo-700">训练前测试</div>
@@ -178,10 +195,15 @@
   <div class="container mx-auto px-4 py-8 max-w-2xl">
 
     <!-- 阶段标题 -->
-    <div id="guideHeader" class="text-center mb-6">
+    <div id="guideHeader" class="text-center mb-4">
       <div class="text-5xl mb-2" id="guideEmoji">🏋️</div>
       <h2 class="text-2xl font-bold text-gray-800" id="guideTitle">训练阶段</h2>
       <p class="text-gray-500 mt-1" id="guideDesc">提高视听整合能力</p>
+    </div>
+
+    <!-- 被试信息 -->
+    <div id="guideSubjectInfo" class="text-center text-gray-600 mb-4 p-3 bg-gray-100 rounded-xl">
+      被试：P001 | 未设置 | 未设置岁
     </div>
 
     <!-- 操作说明卡片 -->
@@ -287,7 +309,7 @@
             <div class="text-3xl mb-1">⏱️</div>
             <div class="font-bold text-sm">功能三</div>
             <div class="text-xs text-gray-500">异步校准训练</div>
-            <div class="text-xs text-gray-400 mt-1">双视频 SOA</div>
+            <div class="text-xs text-gray-400 mt-1">单视频 + SNR + SOA</div>
           </button>
           <button onclick="selectFunc(4)" id="func4" class="func-btn p-4 rounded-xl border-2 border-gray-200 text-center hover:border-primary transition-all">
             <div class="text-3xl mb-1">🧠</div>
@@ -300,7 +322,7 @@
 
       <!-- 配置摘要 -->
       <div id="configSummary" class="p-4 bg-blue-50 rounded-xl mb-6 text-sm text-blue-700">
-        📋 当前配置：<span id="cfgText">功能一 | 训练中 | 被试 P001</span>
+        📋 当前配置：<span id="cfgText">功能一 | 训练阶段 | 被试 P001</span>
       </div>
 
       <!-- 操作按钮 -->
@@ -330,10 +352,9 @@
         <button onclick="goToMenu()" class="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300 text-sm">← 返回菜单</button>
         <div>
           <h2 class="text-xl font-bold text-gray-800" id="prepTitle">材料准备 · 功能一</h2>
-          <p class="text-xs text-gray-500" id="prepSubtitle">训练中阶段</p>
         </div>
       </div>
-      <div id="phaseIndicator" class="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg text-sm font-medium">训练中</div>
+      <div id="phaseIndicator" class="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg text-sm font-medium">训练阶段</div>
     </div>
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -344,18 +365,14 @@
         <!-- SNR变量 -->
         <div id="varSNR" class="mb-5 p-4 bg-blue-50 rounded-xl">
           <div class="flex items-center justify-between mb-2">
-            <div class="flex items-center gap-2">
-              <input type="checkbox" id="enSNR" checked class="w-4 h-4">
-              <span class="font-bold text-blue-800">🔊 SNR（信噪比）</span>
-            </div>
+            <span class="font-bold text-blue-800">🔊 SNR（信噪比）</span>
             <select id="snrMode" onchange="updateSNRSettings()" class="text-sm px-2 py-1 rounded border">
               <option value="adaptive">自适应 (1-up/3-down)</option>
               <option value="fixed">固定阈值测试</option>
               <option value="combinatorial">组合遍历</option>
             </select>
           </div>
-          <div class="grid grid-cols-5 gap-1 mb-2">
-            <label class="text-center cursor-pointer"><input type="checkbox" class="snr-lvl w-4 h-4" value="12" checked><br><span class="text-xs">+12</span></label>
+          <div class="grid grid-cols-4 gap-1 mb-2">
             <label class="text-center cursor-pointer"><input type="checkbox" class="snr-lvl w-4 h-4" value="9" checked><br><span class="text-xs">+9</span></label>
             <label class="text-center cursor-pointer"><input type="checkbox" class="snr-lvl w-4 h-4" value="6" checked><br><span class="text-xs">+6</span></label>
             <label class="text-center cursor-pointer"><input type="checkbox" class="snr-lvl w-4 h-4" value="3" checked><br><span class="text-xs">+3</span></label>
@@ -364,7 +381,6 @@
             <label class="text-center cursor-pointer"><input type="checkbox" class="snr-lvl w-4 h-4" value="-6" checked><br><span class="text-xs">-6</span></label>
             <label class="text-center cursor-pointer"><input type="checkbox" class="snr-lvl w-4 h-4" value="-9"><br><span class="text-xs">-9</span></label>
             <label class="text-center cursor-pointer"><input type="checkbox" class="snr-lvl w-4 h-4" value="-12"><br><span class="text-xs">-12</span></label>
-            <label class="text-center cursor-pointer"><input type="checkbox" class="snr-lvl w-4 h-4" value="-18"><br><span class="text-xs">-18</span></label>
           </div>
           <div class="flex gap-2 text-xs text-blue-600 items-center flex-wrap">
             <span>顺序：</span>
@@ -377,33 +393,9 @@
           </div>
         </div>
 
-        <!-- 模糊度变量 -->
-        <div id="varBlur" class="mb-5 p-4 bg-purple-50 rounded-xl hidden">
-          <div class="flex items-center gap-2 mb-2">
-            <input type="checkbox" id="enBlur" checked class="w-4 h-4">
-            <span class="font-bold text-purple-800">🎭 模糊度（像素化马赛克）</span>
-          </div>
-          <div class="grid grid-cols-7 gap-1 mb-2">
-            <label class="text-center cursor-pointer"><input type="checkbox" class="blur-lvl w-4 h-4" value="0" checked><br><span class="text-xs">0%</span><br><span class="text-xs text-green-600">清晰</span></label>
-            <label class="text-center cursor-pointer"><input type="checkbox" class="blur-lvl w-4 h-4" value="10"><br><span class="text-xs">10%</span></label>
-            <label class="text-center cursor-pointer"><input type="checkbox" class="blur-lvl w-4 h-4" value="20"><br><span class="text-xs">20%</span></label>
-            <label class="text-center cursor-pointer"><input type="checkbox" class="blur-lvl w-4 h-4" value="30"><br><span class="text-xs">30%</span></label>
-            <label class="text-center cursor-pointer"><input type="checkbox" class="blur-lvl w-4 h-4" value="40"><br><span class="text-xs">40%</span></label>
-            <label class="text-center cursor-pointer"><input type="checkbox" class="blur-lvl w-4 h-4" value="50"><br><span class="text-xs">50%</span></label>
-            <label class="text-center cursor-pointer"><input type="checkbox" class="blur-lvl w-4 h-4" value="60"><br><span class="text-xs">60%</span><br><span class="text-xs text-red-500">极糊</span></label>
-          </div>
-          <div class="flex gap-2 text-xs text-purple-600 items-center flex-wrap">
-            <span>顺序：</span>
-            <button onclick="setOrder('blur','random')" id="blurOrderR" class="px-2 py-0.5 rounded bg-purple-200 font-medium">🔀随机</button>
-            <button onclick="setOrder('blur','seq')" id="blurOrderS" class="px-2 py-0.5 rounded bg-gray-100">📊顺序</button>
-            <span class="ml-2">重复：<input type="number" id="blurReps" value="3" min="1" max="20" class="w-12 px-1 border rounded text-center">次/档</span>
-          </div>
-        </div>
-
         <!-- SOA变量 -->
         <div id="varSOA" class="mb-5 p-4 bg-orange-50 rounded-xl hidden">
           <div class="flex items-center gap-2 mb-2">
-            <input type="checkbox" id="enSOA" checked class="w-4 h-4">
             <span class="font-bold text-orange-800">⏱️ 视听同步偏移 (SOA)</span>
           </div>
           <div class="grid grid-cols-7 gap-0.5 mb-2">
@@ -426,7 +418,6 @@
         <!-- 注意条件 -->
         <div id="varAtt" class="mb-5 p-4 bg-green-50 rounded-xl hidden">
           <div class="flex items-center gap-2 mb-2">
-            <input type="checkbox" id="enAtt" checked class="w-4 h-4">
             <span class="font-bold text-green-800">🧠 注意条件</span>
           </div>
           <div class="grid grid-cols-2 gap-2">
@@ -459,14 +450,24 @@
         <div class="bg-white rounded-2xl shadow-xl p-6">
           <h3 class="font-bold text-gray-800 mb-3 flex items-center gap-2"><span>👁️</span> 材料预览</h3>
 
+          <!-- 音频输出设备选择 -->
+          <div class="mb-4 p-3 bg-gray-50 rounded-lg flex items-center gap-3 flex-wrap">
+            <label class="text-sm text-gray-600 font-medium">🔊 音频输出：</label>
+            <select id="audioOutputSelect" onchange="changeAudioOutputDevice()" class="text-sm px-2 py-1 border rounded-lg bg-white min-w-[200px]">
+              <option value="">默认设备</option>
+            </select>
+            <button onclick="refreshAudioDevices()" class="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg text-xs hover:bg-blue-200">🔄 刷新</button>
+            <span class="text-xs text-gray-400" id="audioDeviceStatus"></span>
+          </div>
+
           <!-- 功能1预览 -->
           <div id="preview1" class="text-center py-6">
             <div class="text-6xl mb-3">🔊</div>
             <div class="text-gray-500 text-sm">功能一：纯音频 + 噪音（无视频）</div>
             <div class="mt-4 p-3 bg-blue-50 rounded-lg text-xs text-blue-600">预览不同SNR的噪音混合效果</div>
-            <input type="range" id="previewSNRSlider" min="-18" max="12" step="3" value="0" class="w-full mt-3">
+            <input type="range" id="previewSNRSlider" min="-12" max="9" step="3" value="0" class="w-full mt-3">
             <div class="flex justify-between text-xs text-gray-400 mt-1">
-              <span>-18dB</span><span>-9</span><span>0</span><span>+9</span><span>+12dB</span>
+              <span>-12dB</span><span>-6</span><span>0</span><span>+6</span><span>+9dB</span>
             </div>
             <div class="mt-2 text-lg font-bold text-blue-600" id="previewSNRText">SNR: 0 dB</div>
             <button onclick="playPreview()" class="mt-3 px-6 py-2 bg-primary text-white rounded-lg text-sm hover:bg-blue-600">▶️ 播放预览</button>
@@ -482,17 +483,17 @@
             <div class="mt-3 space-y-2">
               <div>
                 <label class="text-xs text-gray-500">SNR（信噪比）：</label>
-                <input type="range" id="previewSNRSlider2" min="-18" max="12" step="3" value="0" class="w-full mt-1">
+                <input type="range" id="previewSNRSlider2" min="-12" max="9" step="3" value="0" class="w-full mt-1">
                 <div class="flex justify-between text-xs text-gray-400 mt-1">
-                  <span>-18dB</span><span>-9</span><span>0</span><span>+9</span><span>+12dB</span>
+                  <span>-12dB</span><span>-6</span><span>0</span><span>+6</span><span>+9dB</span>
                 </div>
                 <div class="text-center mt-1"><span class="px-3 py-1 bg-blue-100 rounded text-blue-600 text-sm font-bold" id="previewSNRText2">SNR: 0 dB</span></div>
               </div>
               <div>
                 <label class="text-xs text-gray-500">马赛克模糊度：</label>
-                <input type="range" id="previewBlurSlider" min="0" max="60" step="5" value="0" class="w-full">
+                <input type="range" id="previewBlurSlider" min="0" max="20" step="4" value="0" class="w-full">
                 <div class="flex justify-between text-xs text-gray-400 mt-1">
-                  <span>0%（清晰）</span><span>10%</span><span>20%</span><span>30%</span><span>40%</span><span>50%</span><span>60%（极糊）</span>
+                  <span>0%</span><span>4%</span><span>8%</span><span>12%</span><span>16%</span><span>20%</span>
                 </div>
                 <div class="text-center mt-1"><span class="px-3 py-1 bg-purple-100 rounded text-purple-600 text-sm font-bold" id="previewBlurText">模糊度: 0%</span></div>
               </div>
@@ -500,7 +501,7 @@
             <button onclick="playPreview()" class="mt-3 w-full px-6 py-2 bg-primary text-white rounded-lg text-sm hover:bg-blue-600">▶️ 播放预览</button>
           </div>
 
-          <!-- 功能3预览 - 单视频 + SNR + 模糊度 + SOA -->
+          <!-- 功能3预览 - 单视频 + SNR + SOA -->
           <div id="preview3" class="hidden">
             <div class="relative rounded-xl overflow-hidden bg-gray-900 mx-auto" style="aspect-ratio:16/9; max-width:800px;">
               <video id="previewVideo3" class="w-full h-full object-cover" muted playsinline>
@@ -511,19 +512,11 @@
             <div class="mt-3 space-y-2">
               <div>
                 <label class="text-xs text-gray-500">SNR（信噪比）：</label>
-                <input type="range" id="previewSNRSlider3" min="-18" max="12" step="3" value="0" class="w-full mt-1">
+                <input type="range" id="previewSNRSlider3" min="-12" max="9" step="3" value="0" class="w-full mt-1">
                 <div class="flex justify-between text-xs text-gray-400 mt-1">
-                  <span>-18dB</span><span>-9</span><span>0</span><span>+9</span><span>+12dB</span>
+                  <span>-12dB</span><span>-6</span><span>0</span><span>+6</span><span>+9dB</span>
                 </div>
                 <div class="text-center mt-1"><span class="px-3 py-1 bg-blue-100 rounded text-blue-600 text-sm font-bold" id="previewSNRText3">SNR: 0 dB</span></div>
-              </div>
-              <div>
-                <label class="text-xs text-gray-500">模糊度（像素化）：</label>
-                <input type="range" id="previewBlurSlider3" min="0" max="60" step="5" value="0" class="w-full mt-1">
-                <div class="flex justify-between text-xs text-gray-400 mt-1">
-                  <span>0%（清晰）</span><span>10%</span><span>20%</span><span>30%</span><span>40%</span><span>50%</span><span>60%（极糊）</span>
-                </div>
-                <div class="text-center mt-1"><span class="px-3 py-1 bg-purple-100 rounded text-purple-600 text-sm font-bold" id="previewBlurText3">模糊度: 0%</span></div>
               </div>
               <div>
                 <label class="text-xs text-gray-500">SOA（音视频延迟）：</label>
@@ -556,9 +549,9 @@
             <div class="mt-3 space-y-2">
               <div>
                 <label class="text-xs text-gray-500">SNR（信噪比）：</label>
-                <input type="range" id="previewSNRSlider4" min="-18" max="12" step="3" value="0" class="w-full mt-1">
+                <input type="range" id="previewSNRSlider4" min="-12" max="9" step="3" value="0" class="w-full mt-1">
                 <div class="flex justify-between text-xs text-gray-400 mt-1">
-                  <span>-18dB</span><span>-9</span><span>0</span><span>+9</span><span>+12dB</span>
+                  <span>-12dB</span><span>-6</span><span>0</span><span>+6</span><span>+9dB</span>
                 </div>
                 <div class="text-center mt-1"><span class="px-3 py-1 bg-blue-100 rounded text-blue-600 text-sm font-bold" id="previewSNRText4">SNR: 0 dB</span></div>
               </div>
@@ -657,14 +650,14 @@
       <div class="flex items-center gap-3">
         <button onclick="confirmQuit()" class="px-3 py-1.5 bg-red-100 text-red-600 rounded-lg text-sm hover:bg-red-200">❌ 退出</button>
         <div>
-          <div class="font-bold text-gray-800 text-lg" id="expTitleBar">训练中</div>
+          <div class="font-bold text-gray-800 text-lg" id="expTitleBar">训练阶段</div>
           <div class="text-xs text-gray-500" id="expSubtitleBar">被试 P001</div>
         </div>
       </div>
       <!-- 进度 inline -->
       <div class="flex items-center gap-3">
         <div class="text-sm text-gray-500" id="expProgressText">0 / 0</div>
-        <div id="expPhaseTag" class="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg text-sm font-medium">训练中</div>
+        <div id="expPhaseTag" class="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg text-sm font-medium">训练阶段</div>
       </div>
     </div>
 
@@ -678,11 +671,11 @@
       <div id="expProgressBar" class="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all" style="width:0%"></div>
     </div>
 
-    <!-- 主体：左视频/音频 | 右答题 -->
-    <div class="grid grid-cols-1 lg:grid-cols-7 gap-4">
+    <!-- 主体：视频在上 | 选项在下 -->
+    <div class="space-y-4">
     
-      <!-- 左侧：视频区域（占5/7宽度） -->
-      <div class="lg:col-span-5 space-y-3">
+      <!-- 上方：视频区域 -->
+      <div class="space-y-3">
 
         <!-- 功能1 -->
         <div id="expView1" class="bg-white rounded-2xl shadow-xl p-6">
@@ -732,9 +725,7 @@
               <source id="expVideo3Src" src="" type="video/mp4">
             </video>
           </div>
-          <div class="mt-2 text-center">
-            <span class="px-4 py-1 bg-orange-50 rounded-lg text-orange-600 font-bold text-lg" id="exp3SOA">0 ms</span>
-          </div>
+          <!-- 删除视频下方独立的SOA数值显示，保留下方的条件标签刷新 -->
           <div class="mt-2 grid grid-cols-2 gap-2">
             <div class="text-center p-2 bg-blue-50 rounded-lg">
               <div class="text-xs text-gray-400">SNR</div>
@@ -790,47 +781,26 @@
           </button>
         </div>
       </div>
-
-      <!-- 右侧答题区（更大、更突出） -->
-      <div class="lg:col-span-2 space-y-3">
+      
+      <!-- 下方：答题区（更大、更突出） -->
+      <div class="space-y-3">
 
         <!-- 任务说明 -->
         <div class="bg-white rounded-2xl shadow-xl p-5">
           <div class="text-gray-500 text-sm mb-1" id="expQuestion">请仔细听，选出您听到的内容：</div>
 
-          <!-- 选项按钮 - 大字体、大间距 -->
-          <div id="expChoices" class="space-y-3 mt-3">
-            <button class="choice-btn w-full py-4 px-5 bg-gray-50 border-2 border-gray-200 rounded-2xl text-left text-xl font-bold" disabled>A. --</button>
-            <button class="choice-btn w-full py-4 px-5 bg-gray-50 border-2 border-gray-200 rounded-2xl text-left text-xl font-bold" disabled>B. --</button>
-            <button class="choice-btn w-full py-4 px-5 bg-gray-50 border-2 border-gray-200 rounded-2xl text-left text-xl font-bold" disabled>C. --</button>
-            <button class="choice-btn w-full py-4 px-5 bg-gray-50 border-2 border-gray-200 rounded-2xl text-left text-xl font-bold" disabled>D. --</button>
+          <!-- 选项按钮 - 横排四列等宽布局 -->
+          <div id="expChoices" class="grid grid-cols-4 gap-3 mt-3">
+            <button class="choice-btn w-full py-5 px-4 bg-gray-50 border-2 border-gray-200 rounded-2xl text-center text-lg font-bold" disabled>A. --</button>
+            <button class="choice-btn w-full py-5 px-4 bg-gray-50 border-2 border-gray-200 rounded-2xl text-center text-lg font-bold" disabled>B. --</button>
+            <button class="choice-btn w-full py-5 px-4 bg-gray-50 border-2 border-gray-200 rounded-2xl text-center text-lg font-bold" disabled>C. --</button>
+            <button class="choice-btn w-full py-5 px-4 bg-gray-50 border-2 border-gray-200 rounded-2xl text-center text-lg font-bold" disabled>D. --</button>
           </div>
 
           <!-- 反馈 -->
           <div id="expFeedback" class="mt-4 p-4 rounded-2xl text-center hidden">
             <p id="expFeedbackText" class="font-bold text-xl"></p>
           </div>
-        </div>
-
-        <!-- 实时统计 -->
-        <div class="bg-white rounded-2xl shadow-xl p-4">
-          <div class="grid grid-cols-2 gap-2">
-            <div class="bg-blue-50 p-3 rounded-xl text-center">
-              <div class="text-2xl font-bold text-blue-600" id="eStatTrials">0</div>
-              <div class="text-xs text-gray-500">已完成</div>
-            </div>
-            <div class="bg-green-50 p-3 rounded-xl text-center">
-              <div class="text-2xl font-bold text-green-600" id="eStatAcc">--%</div>
-              <div class="text-xs text-gray-500">正确率</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 当前条件标签 -->
-        <div class="bg-gradient-to-br from-blue-500 to-purple-600 text-white rounded-2xl p-4">
-          <div class="font-bold" id="expPhaseCard">🏋️ 训练中</div>
-          <div class="text-sm opacity-90 mt-1" id="expFuncCard">功能一 · 抗干扰</div>
-          <div class="text-xs opacity-70 mt-1" id="expConditionText">条件：--</div>
         </div>
       </div>
     </div>
@@ -849,7 +819,7 @@
       <div class="text-center mb-6">
         <div class="text-6xl mb-3">🎉</div>
         <h2 class="text-3xl font-bold text-gray-800">训练完成！</h2>
-        <p class="text-gray-500 mt-2" id="resSubtitle">被试 P001 · 功能一 · 训练中</p>
+        <p class="text-gray-500 mt-2" id="resSubtitle">被试 P001 · 功能一 · 训练阶段</p>
       </div>
 
       <!-- 鼓励语 -->
