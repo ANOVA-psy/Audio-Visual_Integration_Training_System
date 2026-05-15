@@ -24,6 +24,8 @@
     isPlaying: false,
     isWaitingForResponse: false,
     responseStartTime: null,
+    submitLockUntil: 0,     // 防双击：时间戳，0 表示可提交
+    currentAttempt: 0,        // 当前 attempt 编号
 
     adaptive: {
       streak: 0,
@@ -136,7 +138,8 @@
   }
 
   /**
-   * 病人选择模块后 → 使用默认配置生成试次 → 直接进入实验
+   * 病人选择模块后 → 检查材料准备状态 → 进入实验
+   * ★ 修改：必须先完成材料准备（保存设置）才能开始训练
    */
   window.quickSelectModule = function(funcId) {
     STATE.func = funcId;
@@ -145,17 +148,26 @@
     selectFunc(funcId);
     selectPhase(STATE.phase);
 
-    // ★ 修复：先尝试加载已保存的配置
+    // ★ 检查：必须先完成材料准备
     const savedSettings = AdminSettings.getSettings(STATE.subjectId, STATE.phase, funcId);
-    if (savedSettings && savedSettings.settings) {
-      console.log('[QuickStart] 加载已保存的设置', savedSettings);
-      AdminSettings.applySettingsToUI(savedSettings.settings);
-      UIHelper.showNotification('已加载保存的设置', 'info');
-    } else {
-      // 没有保存的配置，使用默认配置
-      console.log('[QuickStart] 没有保存的设置，使用默认配置');
-      applyQuickConfig(funcId, STATE.phase);
+    if (!savedSettings || !savedSettings.settings) {
+      // 没有保存的配置，提示用户需要先准备材料
+      console.warn('[QuickStart] 未找到材料准备记录，请先完成材料准备');
+      UIHelper.showNotification(
+        `请先为被试 ${STATE.subjectId} 完成功能${funcId} 的材料准备（管理员页面）`,
+        'warning'
+      );
+
+      // 跳转到管理员页面引导用户
+      setTimeout(() => {
+        UIHelper.showScreen('menu');
+        UIHelper.showNotification('请点击"进入材料准备"完成设置', 'info');
+      }, 1500);
+      return;
     }
+
+    console.log('[QuickStart] 加载已保存的设置', savedSettings);
+    AdminSettings.applySettingsToUI(savedSettings.settings);
 
     // 生成试次
     try {
@@ -722,6 +734,10 @@
 
   // ==================== 生成程序（管理员流程） ====================
   window.generateTrials = function() {
+    // ★ 每次点击"生成程序"时递增 attempt 编号
+    STATE.currentAttempt = (STATE.currentAttempt || 0) + 1;
+    console.log('[Generate] Attempt #' + STATE.currentAttempt);
+
     UIHelper.showLoading('正在生成试次...');
     try {
       const config = {
@@ -1588,10 +1604,19 @@
 
   // ==================== 提交答案 ====================
   function submitAnswer(selectedIndex) {
+    // ★ 防双击：检查锁定时间
+    if (Date.now() < STATE.submitLockUntil) {
+      console.warn('[submitAnswer] 提交被锁定，请稍候');
+      return;
+    }
+
     if (!STATE.isWaitingForResponse) {
       console.warn('[submitAnswer] 当前不在等待响应状态，忽略此次点击');
       return;
     }
+
+    // ★ 设置 0.5s 锁定
+    STATE.submitLockUntil = Date.now() + 500;
     
     // ★ 修复：取消超时计时器
     if (responseTimeoutId) {
@@ -1700,6 +1725,7 @@
           phase:     STATE.phase,
           func:      STATE.func,
           snrMode:   STATE.snrMode,
+          attemptNumber: STATE.currentAttempt || 1,  // 新增
           threshold, fitResult,
           eventLog: EventLogger.toJSON()
         };
@@ -1826,27 +1852,177 @@
   function renderResultsCharts() {
     const fitResult = calculateThreshold();
     const canvas    = document.getElementById('psychCurve');
-    if (!canvas || !fitResult) return;
+    if (!canvas) return;
 
-    if (STATE.func === 1) {
-      Psychometric.drawCurve(canvas, fitResult, {
-        title:'功能一：心理物理曲线', xLabel:'SNR (dB)', yLabel:'正确率', lineColor:'#6366f1'
-      });
-    } else if (STATE.func === 2 && fitResult.fitClear && fitResult.fitBlur) {
-      drawDualCurves(canvas, fitResult.fitClear, fitResult.fitBlur, {
-        title:'功能二：视觉增益', xLabel:'SNR (dB)', yLabel:'正确率',
-        label1:`清晰(${fitResult.clearBlur}%)`, label2:`模糊(${fitResult.maxBlur}%)`,
-        color1:'#6366f1', color2:'#f59e0b'
-      });
-    } else if (STATE.func === 3 && fitResult.fit) {
-      Psychometric.drawCurve(canvas, fitResult.fit, {
-        title:'功能三：视听整合时窗', xLabel:'SOA (ms)', yLabel:'正确率', lineColor:'#6366f1'
-      });
-    } else if (STATE.func === 4 && fitResult.fitSingle && fitResult.fitDual) {
-      drawDualCurves(canvas, fitResult.fitSingle, fitResult.fitDual, {
-        title:'功能四：注意干扰', xLabel:'SNR (dB)', yLabel:'正确率',
-        label1:'单说话人', label2:'双说话人', color1:'#6366f1', color2:'#ef4444'
-      });
+    // 1. 心理物理曲线（原有逻辑）
+    if (fitResult) {
+      if (STATE.func === 1) {
+        Psychometric.drawCurve(canvas, fitResult, {
+          title:'功能一：心理物理曲线', xLabel:'SNR (dB)', yLabel:'正确率', lineColor:'#6366f1'
+        });
+      } else if (STATE.func === 2 && fitResult.fitClear && fitResult.fitBlur) {
+        drawDualCurves(canvas, fitResult.fitClear, fitResult.fitBlur, {
+          title:'功能二：视觉增益', xLabel:'SNR (dB)', yLabel:'正确率',
+          label1:`清晰(${fitResult.clearBlur}%)`, label2:`模糊(${fitResult.maxBlur}%)`,
+          color1:'#6366f1', color2:'#f59e0b'
+        });
+      } else if (STATE.func === 3 && fitResult.fit) {
+        Psychometric.drawCurve(canvas, fitResult.fit, {
+          title:'功能三：视听整合时窗', xLabel:'SOA (ms)', yLabel:'正确率', lineColor:'#6366f1'
+        });
+      } else if (STATE.func === 4 && fitResult.fitSingle && fitResult.fitDual) {
+        drawDualCurves(canvas, fitResult.fitSingle, fitResult.fitDual, {
+          title:'功能四：注意干扰', xLabel:'SNR (dB)', yLabel:'正确率',
+          label1:'单说话人', label2:'双说话人', color1:'#6366f1', color2:'#ef4444'
+        });
+      }
+    }
+
+    // 2. Gold Metric 趋势图（使用 Charts.drawTrendLine）
+    const trendCanvas = document.getElementById('trendChart');
+    if (trendCanvas && typeof Charts !== 'undefined') {
+      // 从 localStorage 获取同功能的历史记录
+      try {
+        const allData = DataManager.getAllData ? DataManager.getAllData() : [];
+        const sameFunc = allData.filter(d =>
+          d.metadata && d.metadata.func === STATE.func &&
+          d.metadata.subjectId === STATE.subjectId
+        );
+        // 按 attemptNumber 排序
+        sameFunc.sort((a, b) => (a.attemptNumber || 0) - (b.attemptNumber || 0));
+
+        // 构造趋势数据：使用正确率或阈值作为 goldMetric
+        const trendData = sameFunc
+          .filter(d => d.metadata && d.metadata.accuracy !== undefined)
+          .map(d => ({
+            attempt: d.attemptNumber || 1,
+            goldMetric: d.metadata.accuracy  // 使用正确率作为指标
+          }));
+
+        if (trendData.length > 0) {
+          Charts.drawTrendLine(trendCanvas, trendData, {
+            title: `功能${STATE.func} 正确率趋势（按 Attempt）`,
+            xLabel: 'Attempt 次数',
+            yLabel: '正确率 (%)',
+            lineColor: '#6366f1',
+            thresholdLine: 80  // 80% 目标线
+          });
+          // 显示容器
+          const container = document.getElementById('trendChartContainer');
+          if (container) container.style.display = 'block';
+        }
+      } catch(e) {
+        console.warn('[Charts] 趋势图数据准备失败:', e);
+      }
+    }
+
+    // 3. 热力图（功能二/三）
+    const heatmapCanvas = document.getElementById('heatmapChart');
+    const heatmapContainer = document.getElementById('heatmapContainer');
+    if (heatmapCanvas && heatmapContainer && typeof Charts !== 'undefined') {
+      try {
+        const results = STATE.results;
+        if (STATE.func === 2 && results.length > 0) {
+          // 功能二：SNR × 模糊度 的正确率热力图
+          const snrLevels = [...new Set(results.map(r => r.snr))].sort((a,b) => a-b);
+          const blurLevels = [...new Set(results.map(r => r.blur))].sort((a,b) => a-b);
+
+          if (snrLevels.length > 0 && blurLevels.length > 0) {
+            const matrix = blurLevels.map(blur =>
+              snrLevels.map(snr => {
+                const hits = results.filter(r => r.snr === snr && r.blur === blur);
+                return hits.length > 0
+                  ? hits.filter(r => r.correct).length / hits.length
+                  : 0;
+              })
+            );
+
+            Charts.drawHeatmap(heatmapCanvas, {
+              matrix: matrix,
+              xLabels: snrLevels.map(s => s + 'dB'),
+              yLabels: blurLevels.map(b => b + '%')
+            }, {
+              title: '功能二：SNR × 模糊度 正确率热力图',
+              xLabel: 'SNR (dB)',
+              yLabel: '模糊度 (%)'
+            });
+            heatmapContainer.style.display = 'block';
+          }
+        } else if (STATE.func === 3 && results.length > 0) {
+          // 功能三：SNR × SOA 的正确率热力图
+          const snrLevels = [...new Set(results.map(r => r.snr))].sort((a,b) => a-b);
+          const soaLevels = [...new Set(results.map(r => r.soa))].sort((a,b) => a-b);
+
+          if (snrLevels.length > 0 && soaLevels.length > 0) {
+            const matrix = soaLevels.map(soa =>
+              snrLevels.map(snr => {
+                const hits = results.filter(r => r.snr === snr && r.soa === soa);
+                return hits.length > 0
+                  ? hits.filter(r => r.correct).length / hits.length
+                  : 0;
+              })
+            );
+
+            Charts.drawHeatmap(heatmapCanvas, {
+              matrix: matrix,
+              xLabels: snrLevels.map(s => s + 'dB'),
+              yLabels: soaLevels.map(s => s + 'ms')
+            }, {
+              title: '功能三：SNR × SOA 正确率热力图',
+              xLabel: 'SNR (dB)',
+              yLabel: 'SOA (ms)'
+            });
+            heatmapContainer.style.display = 'block';
+          }
+        }
+      } catch(e) {
+        console.warn('[Charts] 热力图数据准备失败:', e);
+      }
+    }
+
+    // 4. 面积图（功能四：单 vs 双说话人）
+    const areaCanvas = document.getElementById('areaChart');
+    const areaContainer = document.getElementById('areaChartContainer');
+    if (areaCanvas && areaContainer && typeof Charts !== 'undefined') {
+      try {
+        const results = STATE.results;
+        if (STATE.func === 4 && results.length > 0) {
+          // 按 SNR 分组，分别计算 single 和 dual 的正确率
+          const snrLevels = [...new Set(results.map(r => r.snr))].sort((a,b) => a-b);
+
+          const singleData = { x: [], y: [] };
+          const dualData = { x: [], y: [] };
+
+          snrLevels.forEach(snr => {
+            const singleHits = results.filter(r => r.snr === snr && r.attention === 'single');
+            const dualHits = results.filter(r => r.snr === snr && r.attention === 'dual');
+
+            singleData.x.push(snr);
+            singleData.y.push(
+              singleHits.length > 0 ? singleHits.filter(r => r.correct).length / singleHits.length : 0
+            );
+
+            dualData.x.push(snr);
+            dualData.y.push(
+              dualHits.length > 0 ? dualHits.filter(r => r.correct).length / dualHits.length : 0
+            );
+          });
+
+          if (singleData.x.length > 0 && dualData.x.length > 0) {
+            Charts.drawAreaChart(areaCanvas, {
+              single: singleData,
+              dual: dualData
+            }, {
+              title: '功能四：单说话人 vs 双说话人 正确率对比',
+              xLabel: 'SNR (dB)',
+              yLabel: '正确率'
+            });
+            areaContainer.style.display = 'block';
+          }
+        }
+      } catch(e) {
+        console.warn('[Charts] 面积图数据准备失败:', e);
+      }
     }
   }
 

@@ -75,9 +75,9 @@
 
   function updateGuideScreen(phase) {
     const phaseInfo = {
-      pre:   { emoji:'📊', title:'训练前测试', desc:'了解您目前的听觉基础能力，没有对错之分，尽力作答即可', color:'indigo' },
-      train: { emoji:'🏋️', title:'训练阶段',   desc:'反复练习，逐步提升您的视听整合能力',                    color:'blue'   },
-      post:  { emoji:'📈', title:'训练后测试', desc:'检验训练效果，与训练前的结果进行对比',                    color:'green'  }
+      pre:   { emoji:'', title:'训练前测试', desc:'建立个人能力基线，系统将据此为您定制专属的强化方案',color:'indigo'},
+      train: { emoji:'️', title:'训练阶段',   desc:'执行系统化专项训练，针对性突破薄弱环节，巩固核心技能',color:'blue'},
+      post:  { emoji:'', title:'训练后测试', desc:'科学评估训练成效，生成可视化报告，量化您的能力提升',color:'green'}
     };
     const info = phaseInfo[phase];
 

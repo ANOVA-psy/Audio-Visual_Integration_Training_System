@@ -58,6 +58,9 @@ const Staircase = (function () {
       warmUpTrials: 0
     }, opts || {});
 
+    /** @type {Object} 保存配置引用，供 reset() 使用 */
+    this.opts = opts;
+
     /** @type {number} 当前刺激强度 */
     this.currentValue = opts.startValue;
     /** @type {number} 步进大小 */
@@ -212,8 +215,8 @@ const Staircase = (function () {
    * 重置阶梯状态（保持构造参数）
    */
   Staircase.prototype.reset = function () {
-    const startValue = arguments.length > 0 ? arguments[0] : null;
-    this.currentValue = startValue !== null ? startValue : arguments[0] || 0;
+    const startValue = arguments.length > 0 ? arguments[0] : (this.opts ? this.opts.startValue : 0);
+    this.currentValue = startValue;
     this.streakCorrect = 0;
     this.streakWrong = 0;
     this.trialCount = 0;

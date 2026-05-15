@@ -18,25 +18,57 @@ const DataManager = (function () {
     // 尝试从全局 STATE 获取性别和年龄信息
     let gender = '';
     let age = '';
+    let currentAttempt = 1;
     try {
       if (typeof STATE !== 'undefined') {
         gender = STATE.gender || '';
         age = STATE.age || '';
+        currentAttempt = STATE.currentAttempt || 1;
       }
     } catch (e) {
       console.warn('[DataManager] 无法读取 STATE 中的性别/年龄信息', e);
     }
 
+    const allData = getAllData();
+
+    // 生成 groupKey = subjectId_phase_func
+    const groupKey = `${metadata.subjectId || 'S001'}_${(metadata.phase || 'train')}_func${metadata.func || 1}`;
+
+    // 计算本次 attemptNumber：同组中已有的最大 attemptNumber + 1
+    const sameGroup = allData.filter(d =>
+      d.metadata && d.metadata.subjectId === (metadata.subjectId || 'S001') &&
+      d.metadata.phase === (metadata.phase || 'train') &&
+      d.metadata.func === (metadata.func || 1)
+    );
+    const maxAttempt = sameGroup.length > 0
+      ? Math.max(...sameGroup.map(d => d.attemptNumber || 0))
+      : 0;
+    const attemptNumber = maxAttempt + 1;
+
+    // 如果有旧的 active 记录，将其标记为 overwritten
+    sameGroup.forEach(old => {
+      if (old.status === 'active' || !old.status) {
+        old.status = 'overwritten';
+        // overwrittenBy 稍后更新
+      }
+    });
+
     const data = {
       id: generateId(),
+      attemptNumber: attemptNumber,
+      groupKey: groupKey,
+      status: 'active',           // active | overwritten
+      overwrittenBy: null,         // 覆盖它的新记录 ID
+      previousAttemptId: null,      // 被它覆盖的旧记录 ID
       timestamp: new Date().toISOString(),
       metadata: {
         subjectId: metadata.subjectId || 'S001',
-        gender: gender,      // 新增：性别
-        age: age,           // 新增：年龄
+        gender: gender,
+        age: age,
         date: metadata.date || formatDate(),
         phase: metadata.phase || 'train',
         func: metadata.func || 1,
+        attemptNumber: attemptNumber,
         snrMode: metadata.snrMode || 'adaptive',
         threshold: extractThresholdFromMetadata(metadata),
         totalTrials: results.length,
@@ -51,11 +83,21 @@ const DataManager = (function () {
       results: results
     };
 
-    const allData = getAllData();
+    // 更新被覆盖记录的 overwrittenBy
+    sameGroup.forEach(old => {
+      if (old.status === 'overwritten') {
+        old.overwrittenBy = data.id;
+      }
+    });
+
     allData.push(data);
+
+    // 存储容量检查
+    checkStorageQuota();
+
     localStorage.setItem(STORAGE_KEY, JSON.stringify(allData));
 
-    UIHelper.showNotification('数据已保存', 'success');
+    UIHelper.showNotification('数据已保存（第 ' + attemptNumber + ' 次生成）', 'success');
     return data.id;
   }
 
@@ -145,7 +187,10 @@ const DataManager = (function () {
     let html = '';
 
     Object.keys(grouped).sort().forEach(subjectId => {
-      const records = grouped[subjectId];
+      let records = grouped[subjectId];
+      // 按时间戳降序
+      records.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
       const subjectCbId = `cb_subject_${subjectId}`;
       const recordsDivId = `records_${subjectId}`;
 
@@ -181,21 +226,27 @@ const DataManager = (function () {
                   <th class="p-2 text-left"><input type="checkbox" id="cb_head_${subjectId}"
                          onchange="DataManager.onHeadCheckboxChange('${subjectId}')"
                          class="w-4 h-4 cursor-pointer"></th>
+                  <th class="p-2 text-left">Attempt</th>
                   <th class="p-2 text-left">日期</th>
                   <th class="p-2 text-left">阶段</th>
                   <th class="p-2 text-left">功能</th>
                   <th class="p-2 text-left">试次数</th>
                   <th class="p-2 text-left">正确率</th>
+                  <th class="p-2 text-left">状态</th>
                   <th class="p-2 text-left">操作</th>
                 </tr>
               </thead>
               <tbody>
       `;
 
-      records.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).forEach(d => {
+      records.forEach(d => {
         const phaseNames = { pre: '训练前', train: '训练阶段', post: '训练后' };
         const funcNames = { 1: '功能一', 2: '功能二', 3: '功能三', 4: '功能四' };
         const cbId = `cb_record_${d.id}`;
+        const isActive = d.status === 'active' || !d.status;
+        const statusBadge = isActive
+          ? '<span class="px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs">当前</span>'
+          : '<span class="px-2 py-0.5 bg-gray-100 text-gray-500 rounded text-xs">已覆盖</span>';
 
         html += `
           <tr class="border-t hover:bg-gray-50">
@@ -204,14 +255,18 @@ const DataManager = (function () {
                      onchange="DataManager.onRecordCheckboxChange('${subjectId}')"
                      class="w-4 h-4 cursor-pointer record-cb">
             </td>
+            <td class="p-2 font-mono">#${d.attemptNumber || 1}</td>
             <td class="p-2">${d.metadata.date}</td>
             <td class="p-2">${phaseNames[d.metadata.phase] || d.metadata.phase}</td>
             <td class="p-2">${funcNames[d.metadata.func] || d.metadata.func}</td>
             <td class="p-2">${d.metadata.totalTrials}</td>
             <td class="p-2">${d.metadata.accuracy}%</td>
+            <td class="p-2">${statusBadge}</td>
             <td class="p-2">
               <button onclick="DataManager.viewDetail('${d.id}')"
                       class="text-blue-500 hover:underline mr-2 text-xs">查看</button>
+              ${!isActive ? `<button onclick="DataManager.restoreAsCurrent('${d.id}')"
+                      class="text-orange-500 hover:underline mr-2 text-xs">恢复为当前</button>` : ''}
               <button onclick="DataManager.deleteDataConfirm('${d.id}')"
                       class="text-red-500 hover:underline text-xs">删除</button>
             </td>
@@ -582,6 +637,55 @@ const DataManager = (function () {
   }
 
   /* ==================================================================
+     存储容量检查
+     ================================================================== */
+
+  function checkStorageQuota() {
+    try {
+      const data = localStorage.getItem(STORAGE_KEY) || '';
+      const bytes = new Blob([data]).size;
+      const mb = bytes / (1024 * 1024);
+      if (mb > 3.6) { // 4MB 的 90%
+        UIHelper.showNotification(
+          '⚠️ 本地存储已使用 ' + mb.toFixed(1) + 'MB（接近 4MB 上限），请及时导出数据',
+          'warning',
+          8000
+        );
+      }
+    } catch(e) { /* 忽略 */ }
+  }
+
+  /* ==================================================================
+     恢复为当前版本
+     ================================================================== */
+
+  function restoreAsCurrent(recordId) {
+    UIHelper.showConfirm('确定要将此版本恢复为"当前"版本吗？当前版本将被标记为"已覆盖"。', () => {
+      const allData = getAllData();
+      const target = allData.find(d => d.id === recordId);
+      if (!target) return;
+
+      // 找到同组的 active 记录，标记为 overwritten
+      allData.forEach(d => {
+        if (d.groupKey === target.groupKey && (d.status === 'active' || !d.status)) {
+          d.status = 'overwritten';
+          d.overwrittenBy = recordId;
+        }
+      });
+
+      // 恢复目标为 active
+      target.status = 'active';
+      target.overwrittenBy = null;
+
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(allData));
+      UIHelper.showNotification('已恢复为当前版本', 'success');
+
+      const hc = document.getElementById('historyContent');
+      if (hc) hc.innerHTML = generateHistoryHTML();
+    });
+  }
+
+  /* ==================================================================
      辅助函数
      ================================================================== */
 
@@ -697,6 +801,9 @@ const DataManager = (function () {
     exportSelectedToJSON,
     uploadSelected,
     setUploadURL,
-    getUploadURL
+    getUploadURL,
+    // Phase 3 新增
+    restoreAsCurrent,
+    checkStorageQuota
   };
 })();

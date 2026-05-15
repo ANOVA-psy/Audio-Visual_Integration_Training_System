@@ -160,6 +160,59 @@ const Config = (function () {
   /** @type {number} 噪音停止延迟（ms） */
   const NOISE_STOP_DELAY = 500;
 
+  // ==================== 预设配置 ====================
+  /**
+   * 系统推荐配置：按功能 + 阶段预设参数
+   * 管理员可一键应用，也可在此基础上微调
+   */
+  const PRESET_CONFIGS = {
+    1: { // 功能一：抗干扰训练
+      train: {
+        snrLevels: [9, 6, 3, 0, -3, -6, -9],
+        snrMode: 'adaptive',
+        startValue: 6,        // 3-up-1-down 起始 SNR
+        upRule: 3,            // 3 次答对 → 升难度（SNR 减小）
+        downRule: 1,          // 1 次答错 → 降难度（SNR 增大）
+        repetitions: 5
+      },
+      pre: { snrLevels: [9, 6, 3, 0, -3], snrMode: 'adaptive', startValue: 6, repetitions: 3 },
+      post: { snrLevels: [9, 6, 3, 0, -3], snrMode: 'adaptive', startValue: 6, repetitions: 3 }
+    },
+    2: { // 功能二：视觉整合训练
+      train: {
+        snrLevels: [9, 6, 3, 0, -3],
+        blurLevels: [0, 4, 8, 12, 16, 20],
+        snrMode: 'adaptive',
+        startValue: 6,
+        repetitions: 5
+      },
+      pre: { snrLevels: [9, 6, 3, 0], blurLevels: [0, 10, 20], repetitions: 3 },
+      post: { snrLevels: [9, 6, 3, 0], blurLevels: [0, 10, 20], repetitions: 3 }
+    },
+    3: { // 功能三：异步校准训练
+      train: {
+        snrLevels: [9, 6, 3, 0, -3],
+        soaLevels: [-300, -200, -100, 0, 100, 200, 300],
+        snrMode: 'adaptive',
+        startValue: 6,
+        repetitions: 5
+      },
+      pre: { snrLevels: [9, 6, 3], soaLevels: [-200, 0, 200], repetitions: 3 },
+      post: { snrLevels: [9, 6, 3], soaLevels: [-200, 0, 200], repetitions: 3 }
+    },
+    4: { // 功能四：注意定位训练
+      train: {
+        snrLevels: [9, 6, 3, 0, -3],
+        attLevels: ['single', 'dual'],
+        snrMode: 'adaptive',
+        startValue: 6,
+        repetitions: 5
+      },
+      pre: { snrLevels: [9, 6, 3], attLevels: ['single', 'dual'], repetitions: 3 },
+      post: { snrLevels: [9, 6, 3], attLevels: ['single', 'dual'], repetitions: 3 }
+    }
+  };
+
   // ==================== 公共 API ====================
   return {
     // 资源
@@ -214,6 +267,9 @@ const Config = (function () {
     SIGNAL_GAIN,
     NOISE_GAIN_CLAMP,
     NOISE_FADE_TIME,
-    NOISE_STOP_DELAY
+    NOISE_STOP_DELAY,
+
+    // 预设配置
+    PRESET_CONFIGS
   };
 })();

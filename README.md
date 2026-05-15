@@ -3,20 +3,48 @@
 ## 目录结构
 
 ```
-data/
-├── README.md                    # 本文件
-├── experiment_history.json      # 实验历史记录（主文件）
-├── subjects/                   # 按被试存储的实验数据
-│   ├── S001/
-│   │   ├── pre_func1_2026-05-13.json
-│   │   ├── train_func1_2026-05-13.json
-│   │   └── post_func1_2026-05-13.json
-│   └── S002/
-├── exports/                    # 导出文件存放处
-│   ├── json/                 # JSON格式导出
-│   └── csv/                  # CSV格式导出
-└── backups/                   # 自动备份
-    └── experiment_history_backup_YYYYMMDD_HHMMSS.json
+视听语音整合训练系统_v3/
+├── 启动.py                 # Python 启动脚本（启动服务器+ngrok）
+├── server.js               # Node.js 后端服务器
+├── package.json            # Node.js 依赖配置
+├── index.html              # 主界面（病人/被试界面）
+├── admin.html              # 管理员设置界面
+├── history.html            # 历史记录查看界面
+│
+├── config/                 # 配置目录
+│   └── constants.js        # 全局参数配置（SNR、模糊度、SOA等）
+│
+├── modules/                # 功能模块目录
+│   ├── module1.js          # 功能一：抗干扰训练
+│   ├── module2.js          # 功能二：视觉整合训练
+│   ├── module3.js          # 功能三：异步校准训练
+│   └── module4.js          # 功能四：注意定位训练
+│
+├── js/                     # JavaScript 核心库
+│   ├── app.js              # 主应用逻辑
+│   ├── audioProcessor*.js  # 音频处理模块
+│   ├── psychometric.js     # 心理物理曲线拟合
+│   ├── dataManager.js      # 数据管理与导出
+│   ├── uiHelper.js         # UI 辅助函数
+│   ├── adminSettings.js    # 管理员设置管理
+│   └── core/               # 核心算法模块
+│       ├── Staircase.js    # 阶梯法自适应算法
+│       └── EventLogger.js  # 原始事件记录器
+│
+├── css/                    # 样式文件
+│   ├── style.css           # 自定义样式
+│   └── tailwind.min.css    # Tailwind CSS 框架
+│
+├── assets/                 # 实验素材
+│   ├── video/              # 视频素材（M8_ba/da/ga.mp4）
+│   └── audio/              # 音频素材（含白噪声）
+│
+└── data/                   # 数据存储目录
+    ├── experiment_history.json  # 实验历史数据
+    ├── uploads/                 # 上传文件
+    ├── subjects/                # 被试数据
+    ├── exports/                 # 导出文件
+    └── backups/                 # 数据备份
 ```
 
 ## 数据文件说明

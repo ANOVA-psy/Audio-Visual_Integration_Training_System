@@ -147,7 +147,7 @@
         <div class="text-4xl">📊</div>
         <div>
           <div class="text-xl font-bold text-indigo-700">训练前测试</div>
-          <div class="text-sm text-gray-500 font-normal mt-0.5">了解您的听觉基础能力</div>
+          <div class="text-sm text-gray-500 font-normal mt-0.5">建立个人能力基线，系统将据此为您定制专属的强化方案</div>
         </div>
         <div class="ml-auto text-2xl">›</div>
       </button>
@@ -157,7 +157,7 @@
         <div class="text-4xl">🏋️</div>
         <div>
           <div class="text-xl font-bold text-blue-700">训练阶段</div>
-          <div class="text-sm text-gray-500 font-normal mt-0.5">反复练习，提升听觉能力</div>
+          <div class="text-sm text-gray-500 font-normal mt-0.5">执行系统化专项训练，针对性突破薄弱环节，巩固核心技能</div>
         </div>
         <div class="ml-auto text-2xl">›</div>
       </button>
@@ -167,7 +167,7 @@
         <div class="text-4xl">📈</div>
         <div>
           <div class="text-xl font-bold text-green-700">训练后测试</div>
-          <div class="text-sm text-gray-500 font-normal mt-0.5">检验您的训练成果</div>
+          <div class="text-sm text-gray-500 font-normal mt-0.5">科学评估训练成效，生成可视化报告，量化您的能力提升</div>
         </div>
         <div class="ml-auto text-2xl">›</div>
       </button>
@@ -250,7 +250,7 @@
     <div class="bg-white rounded-2xl shadow-xl p-8">
       <div class="text-center mb-6">
         <h1 class="text-2xl font-bold text-gray-800 mb-1">⚙️ 管理员设置</h1>
-        <p class="text-gray-400 text-sm">v3.0 · 完整实验配置</p>
+        
       </div>
 
       <!-- 被试信息 -->
@@ -873,6 +873,24 @@
         </p>
       </div>
 
+      <!-- Gold Metric 趋势图 -->
+      <div class="mt-6" id="trendChartContainer">
+        <h4 class="font-bold text-gray-700 mb-2">📈 Gold Metric 趋势（按 Attempt）</h4>
+        <canvas id="trendChart" style="width:100%; height:280px; display:block;"></canvas>
+      </div>
+
+      <!-- 热力图（功能二/三） -->
+      <div class="mt-6" id="heatmapContainer" style="display:none;">
+        <h4 class="font-bold text-gray-700 mb-2">🔥 正确率热力图</h4>
+        <canvas id="heatmapChart" style="width:100%; height:400px; display:block;"></canvas>
+      </div>
+
+      <!-- 面积图（功能四） -->
+      <div class="mt-6" id="areaChartContainer" style="display:none;">
+        <h4 class="font-bold text-gray-700 mb-2">📊 干扰损失对比</h4>
+        <canvas id="areaChart" style="width:100%; height:280px; display:block;"></canvas>
+      </div>
+
       <!-- 详情表 -->
       <div class="mb-5">
         <h3 class="font-bold text-gray-800 mb-2">📋 行为数据详情</h3>
@@ -909,6 +927,7 @@
 <script src="js/audioProcessor_fixed.js"></script>
 <script src="js/psychometric.js"></script>
 <script src="js/dataManager.js"></script>
+<script src="js/charts.js"></script>
 <script src="js/adminSettings.js"></script>
 <script src="modules/module1.js"></script>
 <script src="modules/module2.js"></script>
