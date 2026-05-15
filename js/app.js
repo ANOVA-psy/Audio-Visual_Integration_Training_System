@@ -167,12 +167,43 @@
     }
 
     console.log('[QuickStart] 加载已保存的设置', savedSettings);
-    AdminSettings.applySettingsToUI(savedSettings.settings);
-
-    // 生成试次
+    
+    // ★ 修复：直接从保存的设置生成试次，不从DOM读取（因为DOM中可能没有对应的选择器）
+    const settings = savedSettings.settings;
     try {
       UIHelper.showLoading('正在准备题目...');
-      const trials = generateTrialsForFunc(funcId);
+      
+      // 根据功能直接生成试次
+      let trials = [];
+      if (funcId === 1) {
+        trials = Module1.generateTrialQueue({
+          snrLevels: settings.snrLevels || Config.SNR_DEFAULT.slice(),
+          repetitions: settings.repetitions || Config.DEFAULT_REPETITIONS,
+          order: settings.order || 'random'
+        });
+      } else if (funcId === 2) {
+        trials = Module2.generateTrialQueue({
+          snrLevels: settings.snrLevels || Config.SNR_DEFAULT.slice(),
+          blurLevels: settings.blurLevels || Config.BLUR_DEFAULT.slice(),
+          repetitions: settings.repetitions || Config.DEFAULT_REPETITIONS,
+          order: settings.order || 'random'
+        });
+      } else if (funcId === 3) {
+        trials = Module3.generateTrialQueue({
+          snrLevels: settings.snrLevels || Config.SNR_DEFAULT.slice(),
+          soaLevels: settings.soaLevels || Config.SOA_DEFAULT.slice(),
+          repetitions: settings.repetitions || Config.DEFAULT_REPETITIONS,
+          order: settings.order || 'random'
+        });
+      } else if (funcId === 4) {
+        trials = Module4.generateTrialQueue({
+          snrLevels: settings.snrLevels || Config.SNR_DEFAULT.slice(),
+          attLevels: settings.attLevels || ['single', 'dual'],
+          repetitions: settings.repetitions || Config.DEFAULT_REPETITIONS,
+          order: settings.order || 'random'
+        });
+      }
+      
       if (trials.length === 0) {
         UIHelper.hideLoading();
         UIHelper.showNotification('生成试次失败，请联系工作人员', 'error');
@@ -1083,7 +1114,13 @@
       responseTimeoutId = null;
       console.log('[startNextTrial] 已清理上一个超时计时器');
     }
-    
+
+    // ★ 清理选择冷却计时器
+    if (choiceCooldownId) {
+      clearTimeout(choiceCooldownId);
+      choiceCooldownId = null;
+    }
+
     if (STATE.currentTrialIndex >= STATE.trialQueue.length) {
       showResults();
       return;
@@ -1093,6 +1130,9 @@
       resetFeedback();
 
       const trial = STATE.trialQueue[STATE.currentTrialIndex];
+
+      // ★ 重置状态：新试次未做出选择，禁用播放
+      hasMadeChoice = false;
 
       // ★ 修复：功能4 试次开始前显示目标位置提示（每次都显示）
       // ★ 关键修复：先更新视频标签和视频源，再显示提示
@@ -1198,18 +1238,16 @@
       // 如果视频因缓存等原因已就绪，setupExperimentVideoSources 中的保险会设置 playButtonReady.video = true
       playButtonReady.choices = false;
       
-      // 更新播放按钮为禁用状态（等待选项就绪）
-      if (!playButtonReady.video) {
-        ['exp1PlayBtn','exp2PlayBtn','exp3PlayBtn','exp4PlayBtn'].forEach(id => {
-          const btn = document.getElementById(id);
-          if (btn) {
-            btn.disabled = true;
-            btn.classList.add('opacity-50');
-            btn.classList.remove('play-pulse');
-            btn.textContent = '⏳ 加载中...';
-          }
-        });
-      }
+      // 更新播放按钮为禁用状态（等待选择完成）
+      ['exp1PlayBtn','exp2PlayBtn','exp3PlayBtn','exp4PlayBtn'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) {
+          btn.disabled = true;
+          btn.classList.add('opacity-50');
+          btn.classList.remove('play-pulse');
+          btn.textContent = '⏳ 请先完成上一题...';
+        }
+      });
       
       // 如果功能1（无视频），直接标记视频就绪
       if (STATE.func === 1) {
@@ -1281,14 +1319,26 @@
 
   // 超时计时器 ID（用于取消超时）
   let responseTimeoutId = null;
+  // 选择后冷却计时器 ID
+  let choiceCooldownId = null;
+  // 是否已经做出选择（当前试次）
+  let hasMadeChoice = false;
+
   window.expPlay = async function() {
     // 防重复
     if (STATE.isPlaying) return;
 
-    // ★ 新增：检查材料是否准备好
+    // 检查材料是否准备好
     if (!playButtonReady.video || !playButtonReady.choices) {
       UIHelper.showNotification('材料加载中，请稍候...', 'info');
       console.warn('[expPlay] 材料未就绪', playButtonReady);
+      return;
+    }
+
+    // 检查是否已经做出选择（未选择时禁用播放）
+    if (!hasMadeChoice) {
+      UIHelper.showNotification('请先完成上一题的选择', 'warning');
+      console.warn('[expPlay] 尚未做出选择，禁用播放');
       return;
     }
 
@@ -1298,8 +1348,8 @@
     stopAllVideos();
 
     try {
-      STATE.isPlaying         = true;
-      STATE.responseStartTime = Date.now();
+      STATE.isPlaying = true;
+      // ★ 关键修改：不在播放开始时设置计时，等播放完再设置
 
       const trial = STATE.trialQueue[STATE.currentTrialIndex];
       if (!trial) throw new Error('没有当前试次');
@@ -1309,25 +1359,18 @@
 
       updatePlayButton(true);
 
-      // ★ 关键修复：立即启用选项按钮，不等待播放完毕
-      STATE.isWaitingForResponse = true;
-      enableChoiceButtons(true);
-      
-      // ★ 修复：在点点击播放后立即启动超时计时器
-      if (responseTimeoutId) clearTimeout(responseTimeoutId);
-      responseTimeoutId = setTimeout(() => {
-        if (STATE.isWaitingForResponse) {
-          EventLogger.user('timeout', { trial: STATE.currentTrialIndex + 1 });
-          submitAnswer(-1);
-        }
-      }, Config.RESPONSE_TIMEOUT);
-      console.log('[expPlay] 超时计时器已启动，等待', Config.RESPONSE_TIMEOUT, 'ms');
+      // ★ 关键修改：播放期间禁用选项按钮，播放完才启用
+      enableChoiceButtons(false);
+      STATE.isWaitingForResponse = false;
 
       updateExpConditionDisplay(trial);
 
       EventLogger.user('click_play', {
         trial: STATE.currentTrialIndex + 1,
-        snr: trial.snr, blur: trial.blur, soa: trial.soa, attention: trial.attention
+        snr: trial.snr,
+        blur: trial.blur,
+        soa: trial.soa,
+        attention: trial.attention
       });
 
       // 根据材料找到对应视频/音频
@@ -1427,10 +1470,24 @@
         }
       }
       
+      // ★ 关键修改：播放完成后才开始计时和启用选项
       STATE.isPlaying = false;
+      STATE.isWaitingForResponse = true;
+      STATE.responseStartTime = Date.now(); // ★ 播放完才开始计时
       updatePlayButton(false);
       
-      console.log('[expPlay] 播放完成，等待用户作答...');
+      // 播放完启用选项按钮
+      enableChoiceButtons(true);
+      
+      // ★ 播放完启动超时计时器
+      if (responseTimeoutId) clearTimeout(responseTimeoutId);
+      responseTimeoutId = setTimeout(() => {
+        if (STATE.isWaitingForResponse) {
+          EventLogger.user('timeout', { trial: STATE.currentTrialIndex + 1 });
+          submitAnswer(-1);
+        }
+      }, Config.RESPONSE_TIMEOUT);
+      console.log('[expPlay] 播放完成，等待用户作答...超时计时器已启动，等待', Config.RESPONSE_TIMEOUT, 'ms');
     } catch(e) {
       console.error('[expPlay] 播放失败:', e);
       STATE.isPlaying = false;
@@ -1530,9 +1587,24 @@
   }
 
   /**
-   * 检查播放键是否可以启用（需要视频和选项都就绪）
+   * 检查播放键是否可以启用（需要视频和选项都就绪，且已做出选择）
    */
   function checkPlayButtonReady() {
+    // 检查是否已经做出选择（未选择时禁用播放）
+    if (!hasMadeChoice) {
+      ['exp1PlayBtn','exp2PlayBtn','exp3PlayBtn','exp4PlayBtn'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) {
+          btn.disabled = true;
+          btn.classList.add('opacity-50');
+          btn.classList.remove('play-pulse');
+          btn.textContent = '⏳ 请先完成上一题...';
+        }
+      });
+      console.log('[PlayButton] 尚未做出选择，禁用播放键');
+      return;
+    }
+
     // 功能1没有视频，只需要选项就绪
     if (STATE.func === 1) {
       if (playButtonReady.choices) {
@@ -1689,6 +1761,19 @@
       updateExperimentStats();
 
       STATE.currentTrialIndex++;
+
+      // ★ 设置已做出选择标志，允许下一次播放
+      hasMadeChoice = true;
+
+      // ★ 选择后0.5s才能再次播放（冷却时间）
+      if (choiceCooldownId) clearTimeout(choiceCooldownId);
+      choiceCooldownId = setTimeout(() => {
+        console.log('[submitAnswer] 冷却结束，可以播放下一题');
+        // 冷却结束后，如果已经加载好下一题，可以播放
+        if (playButtonReady.video && playButtonReady.choices) {
+          updatePlayButton(false);
+        }
+      }, 500);
 
       // ★ 使用较短 ITI，让病人看到反馈后快速进入下一题
       setTimeout(() => {

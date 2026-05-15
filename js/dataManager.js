@@ -686,6 +686,190 @@ const DataManager = (function () {
   }
 
   /* ==================================================================
+     服务器数据加载
+     ================================================================== */
+
+  /**
+   * 优先从服务器 /api/data 加载数据，失败则回退到 localStorage
+   */
+  async function loadData() {
+    try {
+      const base = getUploadURL();
+      const resp = await fetch(`${base}/api/data`, { cache: 'no-cache' });
+      if (resp.ok) {
+        const serverData = await resp.json();
+        if (Array.isArray(serverData) && serverData.length > 0) {
+          // 过滤掉空对象（没有 metadata 的记录）
+          const validData = serverData.filter(d => d && d.metadata && d.metadata.subjectId);
+          if (validData.length > 0) {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(serverData));
+            console.log(`[DataManager] 已从服务器加载 ${validData.length} 条有效记录（共 ${serverData.length} 条）`);
+            return serverData;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[DataManager] 服务器加载失败，使用本地数据', e);
+    }
+    const localData = getAllData();
+    console.log(`[DataManager] 使用本地数据，共 ${localData.length} 条记录`);
+    return localData;
+  }
+
+  /* ==================================================================
+     导出被试信息 CSV
+     ================================================================== */
+
+  /**
+   * 导出被试信息 CSV：ID、性别、年龄、各阶段/功能的阈值
+   */
+  function exportSubjectInfoCSV() {
+    const allData = getAllData();
+    if (allData.length === 0) {
+      if (typeof UIHelper !== 'undefined') UIHelper.showNotification('没有数据可导出', 'warning');
+      return;
+    }
+
+    // 按被试聚合
+    const subjects = {};
+    allData.forEach(d => {
+      const sid = d.metadata && d.metadata.subjectId ? d.metadata.subjectId : 'Unknown';
+      if (!subjects[sid]) {
+        subjects[sid] = {
+          subjectId: sid,
+          gender: (d.metadata && d.metadata.gender) || '',
+          age: (d.metadata && d.metadata.age) || '',
+          thresholds: {}  // key = "phase_func"
+        };
+      }
+      const phase = d.metadata.phase || 'train';
+      const func = d.metadata.func || 1;
+      const key = `${phase}_func${func}`;
+      // 只取 active 状态的阈值
+      if (d.status === 'active' || !d.status) {
+        if (d.metadata && d.metadata.threshold !== undefined && d.metadata.threshold !== null) {
+          subjects[sid].thresholds[key] = d.metadata.threshold;
+        }
+      }
+    });
+
+    // CSV 表头
+    const headers = ['subjectId', 'gender', 'age',
+      'pre_func1', 'pre_func2', 'pre_func3', 'pre_func4',
+      'train_func1', 'train_func2', 'train_func3', 'train_func4',
+      'post_func1', 'post_func2', 'post_func3', 'post_func4'
+    ];
+    // 性别映射
+    const genderMap = { male: '男', female: '女' };
+
+    let csv = headers.join(',') + '\n';
+    Object.values(subjects).forEach(s => {
+      const row = [
+        s.subjectId,
+        genderMap[s.gender] || s.gender,
+        s.age,
+        s.thresholds['pre_func1'] != null ? s.thresholds['pre_func1'] : '',
+        s.thresholds['pre_func2'] != null ? s.thresholds['pre_func2'] : '',
+        s.thresholds['pre_func3'] != null ? s.thresholds['pre_func3'] : '',
+        s.thresholds['pre_func4'] != null ? s.thresholds['pre_func4'] : '',
+        s.thresholds['train_func1'] != null ? s.thresholds['train_func1'] : '',
+        s.thresholds['train_func2'] != null ? s.thresholds['train_func2'] : '',
+        s.thresholds['train_func3'] != null ? s.thresholds['train_func3'] : '',
+        s.thresholds['train_func4'] != null ? s.thresholds['train_func4'] : '',
+        s.thresholds['post_func1'] != null ? s.thresholds['post_func1'] : '',
+        s.thresholds['post_func2'] != null ? s.thresholds['post_func2'] : '',
+        s.thresholds['post_func3'] != null ? s.thresholds['post_func3'] : '',
+        s.thresholds['post_func4'] != null ? s.thresholds['post_func4'] : ''
+      ];
+      csv += row.join(',') + '\n';
+    });
+
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+    const dateStr = new Date().toISOString().split('T')[0];
+    downloadBlob(blob, `subject_info_${dateStr}.csv`);
+    if (typeof UIHelper !== 'undefined') UIHelper.showNotification('被试信息 CSV 已导出', 'success');
+  }
+
+  /* ==================================================================
+     导出选中记录（格式选择弹窗）
+     ================================================================== */
+
+  /**
+   * 显示格式选择弹窗：JSON 或 CSV
+   */
+  function exportSelectedWithFormat() {
+    const ids = getSelectedIds();
+    if (ids.length === 0) {
+      if (typeof UIHelper !== 'undefined') UIHelper.showNotification('请先选择要导出的记录', 'warning');
+      return;
+    }
+    // 创建弹窗
+    const overlay = document.createElement('div');
+    overlay.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50';
+    overlay.id = 'exportFormatPopup';
+    overlay.innerHTML = `
+      <div class="bg-white rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl">
+        <h3 class="text-lg font-bold text-gray-800 mb-4">选择导出格式</h3>
+        <p class="text-sm text-gray-500 mb-6">将导出 <span class="font-bold text-blue-600">${ids.length}</span> 条选中记录</p>
+        <div class="flex flex-col gap-3">
+          <button onclick="DataManager._doExportSelected('json')"
+                  class="px-4 py-3 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-colors text-sm font-medium">
+            📄 导出为 JSON
+          </button>
+          <button onclick="DataManager._doExportSelected('csv')"
+                  class="px-4 py-3 bg-green-500 text-white rounded-xl hover:bg-green-600 transition-colors text-sm font-medium">
+            📊 导出为 CSV（试次明细）
+          </button>
+          <button onclick="document.getElementById('exportFormatPopup').remove()"
+                  class="px-4 py-3 bg-gray-200 text-gray-700 rounded-xl hover:bg-gray-300 transition-colors text-sm">
+            取消
+          </button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  }
+
+  /**
+   * 按指定格式执行导出
+   * @param {'json'|'csv'} format
+   */
+  function _doExportSelected(format) {
+    // 关闭弹窗
+    const popup = document.getElementById('exportFormatPopup');
+    if (popup) popup.remove();
+
+    const ids = getSelectedIds();
+    if (ids.length === 0) return;
+    const allData = getAllData();
+    const selectedData = allData.filter(d => ids.includes(d.id));
+
+    if (format === 'json') {
+      const blob = new Blob([JSON.stringify(selectedData, null, 2)], { type: 'application/json' });
+      downloadBlob(blob, `selected_${ids.length}records_${Date.now()}.json`);
+      if (typeof UIHelper !== 'undefined') UIHelper.showNotification(`已导出 ${ids.length} 条记录（JSON）`, 'success');
+    } else       if (format === 'csv') {
+      const headers = ['subjectId', 'date', 'phase', 'func', 'trial', 'snr', 'blur', 'soa', 'att', 'correct', 'rt', 'choice', 'timestamp'];
+      let csv = headers.join(',') + '\n';
+      selectedData.forEach(d => {
+        if (d.results && d.results.length > 0) {
+          d.results.forEach(r => {
+            csv += [
+              d.metadata.subjectId, d.metadata.date, d.metadata.phase, d.metadata.func,
+              r.trial, r.snr, r.blur, r.soa, r.attention, r.correct ? 'TRUE' : 'FALSE',
+              r.rt, r.choice, r.timestamp
+            ].join(',') + '\n';
+          });
+        }
+      });
+      const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+      downloadBlob(blob, `selected_${ids.length}records_${Date.now()}.csv`);
+      if (typeof UIHelper !== 'undefined') UIHelper.showNotification(`已导出 ${ids.length} 条记录（CSV）`, 'success');
+    }
+  }
+
+  /* ==================================================================
      辅助函数
      ================================================================== */
 
@@ -804,6 +988,11 @@ const DataManager = (function () {
     getUploadURL,
     // Phase 3 新增
     restoreAsCurrent,
-    checkStorageQuota
+    checkStorageQuota,
+    // 本次新增
+    loadData,
+    exportSelectedWithFormat,
+    exportSubjectInfoCSV,
+    _doExportSelected
   };
 })();
