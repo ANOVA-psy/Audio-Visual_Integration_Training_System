@@ -182,7 +182,80 @@
           "att": "random"
         }
       }
+    },
+    "func1_pre": {
+      "phase": "pre",
+      "func": 1,
+      "timestamp": "2026-05-18T13:38:22.118Z",
+      "settings": {
+        "snrLevels": [
+          3,
+          0,
+          -3,
+          -6,
+          -9
+        ],
+        "blurLevels": [
+          0
+        ],
+        "soaLevels": [
+          0
+        ],
+        "attLevels": [
+          "single",
+          "dual"
+        ],
+        "repetitions": 3,
+        "snrMode": "adaptive",
+        "order": "random",
+        "orderState": {
+          "snr": "random",
+          "blur": "random",
+          "soa": "random",
+          "att": "random"
+        }
+      }
+    },
+    "func2_post": {
+      "phase": "post",
+      "func": 2,
+      "timestamp": "2026-05-18T13:39:38.703Z",
+      "settings": {
+        "snrLevels": [
+          9,
+          6,
+          3,
+          0,
+          -3,
+          -6,
+          -9
+        ],
+        "blurLevels": [
+          0,
+          4,
+          8,
+          12,
+          16,
+          20
+        ],
+        "soaLevels": [
+          0
+        ],
+        "attLevels": [
+          "single",
+          "dual"
+        ],
+        "repetitions": 3,
+        "snrMode": "adaptive",
+        "order": "random",
+        "orderState": {
+          "snr": "random",
+          "blur": "random",
+          "soa": "random",
+          "att": "random"
+        }
+      }
     }
   },
-  "updatedAt": "2026-05-18T13:33:27.487Z"
+  "updatedAt": "2026-05-18T13:39:38.703Z"
 }

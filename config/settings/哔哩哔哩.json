@@ -1,0 +1,61 @@
+{
+  "subjectId": "哔哩哔哩",
+  "gender": "female",
+  "age": "23",
+  "createdAt": "2026-05-18T13:40:45.277Z",
+  "phases": {
+    "func2_pre": {
+      "phase": "pre",
+      "func": 2,
+      "timestamp": "2026-05-18T13:40:45.277Z",
+      "settings": {
+        "snrLevels": [],
+        "blurLevels": [],
+        "soaLevels": [],
+        "attLevels": [],
+        "repetitions": 3,
+        "order": "random"
+      }
+    },
+    "func3_pre": {
+      "phase": "pre",
+      "func": 3,
+      "timestamp": "2026-05-18T13:40:48.099Z",
+      "settings": {
+        "snrLevels": [],
+        "blurLevels": [],
+        "soaLevels": [],
+        "attLevels": [],
+        "repetitions": 3,
+        "order": "random"
+      }
+    },
+    "func4_pre": {
+      "phase": "pre",
+      "func": 4,
+      "timestamp": "2026-05-18T13:40:49.676Z",
+      "settings": {
+        "snrLevels": [],
+        "blurLevels": [],
+        "soaLevels": [],
+        "attLevels": [],
+        "repetitions": 3,
+        "order": "random"
+      }
+    },
+    "func1_pre": {
+      "phase": "pre",
+      "func": 1,
+      "timestamp": "2026-05-18T13:40:51.316Z",
+      "settings": {
+        "snrLevels": [],
+        "blurLevels": [],
+        "soaLevels": [],
+        "attLevels": [],
+        "repetitions": 3,
+        "order": "random"
+      }
+    }
+  },
+  "updatedAt": "2026-05-18T13:40:51.316Z"
+}

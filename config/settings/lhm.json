@@ -72,7 +72,7 @@
     "func2_pre": {
       "phase": "pre",
       "func": 2,
-      "timestamp": "2026-05-18T12:36:04.430Z",
+      "timestamp": "2026-05-18T13:40:01.934Z",
       "settings": {
         "snrLevels": [
           9,
@@ -83,7 +83,14 @@
           -6,
           -9
         ],
-        "blurLevels": [],
+        "blurLevels": [
+          0,
+          4,
+          8,
+          12,
+          16,
+          20
+        ],
         "soaLevels": [
           0
         ],
@@ -92,7 +99,14 @@
           "dual"
         ],
         "repetitions": 3,
-        "order": "random"
+        "snrMode": "adaptive",
+        "order": "random",
+        "orderState": {
+          "snr": "random",
+          "blur": "random",
+          "soa": "random",
+          "att": "random"
+        }
       }
     },
     "func2_train": {
@@ -150,14 +164,32 @@
     "func4_train": {
       "phase": "train",
       "func": 4,
-      "timestamp": "2026-05-18T13:31:21.761Z",
+      "timestamp": "2026-05-18T13:39:09.035Z",
       "settings": {
-        "snrLevels": [],
+        "snrLevels": [
+          9,
+          6,
+          3,
+          0,
+          -3,
+          -6,
+          -9
+        ],
         "blurLevels": [],
         "soaLevels": [],
-        "attLevels": [],
+        "attLevels": [
+          "single",
+          "dual"
+        ],
         "repetitions": 3,
-        "order": "random"
+        "snrMode": "adaptive",
+        "order": "random",
+        "orderState": {
+          "snr": "random",
+          "blur": "random",
+          "soa": "random",
+          "att": "random"
+        }
       }
     },
     "func4_post": {
@@ -174,5 +206,5 @@
       }
     }
   },
-  "updatedAt": "2026-05-18T13:31:59.715Z"
+  "updatedAt": "2026-05-18T13:40:01.934Z"
 }
