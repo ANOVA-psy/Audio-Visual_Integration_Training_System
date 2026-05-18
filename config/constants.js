@@ -168,48 +168,48 @@ const Config = (function () {
   const PRESET_CONFIGS = {
     1: { // 功能一：抗干扰训练
       train: {
-        snrLevels: [9, 6, 3, 0, -3, -6, -9],
+        snrLevels: [9, 6, 3, 0, -3, -6, -9, -6, -9],
         snrMode: 'adaptive',
         startValue: 6,        // 3-up-1-down 起始 SNR
         upRule: 3,            // 3 次答对 → 升难度（SNR 减小）
         downRule: 1,          // 1 次答错 → 降难度（SNR 增大）
         repetitions: 5
       },
-      pre: { snrLevels: [9, 6, 3, 0, -3], snrMode: 'adaptive', startValue: 6, repetitions: 3 },
-      post: { snrLevels: [9, 6, 3, 0, -3], snrMode: 'adaptive', startValue: 6, repetitions: 3 }
+      pre: { snrLevels: [9, 6, 3, 0, -3, -6, -9], snrMode: 'adaptive', startValue: 6, repetitions: 3 },
+      post: { snrLevels: [9, 6, 3, 0, -3, -6, -9], snrMode: 'adaptive', startValue: 6, repetitions: 3 }
     },
     2: { // 功能二：视觉整合训练
       train: {
-        snrLevels: [9, 6, 3, 0, -3],
+        snrLevels: [9, 6, 3, 0, -3, -6, -9],
         blurLevels: [0, 4, 8, 12, 16, 20],
         snrMode: 'adaptive',
         startValue: 6,
         repetitions: 5
       },
-      pre: { snrLevels: [9, 6, 3, 0], blurLevels: [0, 10, 20], repetitions: 3 },
-      post: { snrLevels: [9, 6, 3, 0], blurLevels: [0, 10, 20], repetitions: 3 }
+      pre: { snrLevels: [9, 6, 3, 0, -3, -6, -9], blurLevels: [0, 4, 8, 12, 16, 20], repetitions: 3 },
+      post: { snrLevels: [9, 6, 3, 0, -3, -6, -9], blurLevels: [0, 4, 8, 12, 16, 20], repetitions: 3 }
     },
     3: { // 功能三：异步校准训练
       train: {
-        snrLevels: [9, 6, 3, 0, -3],
+        snrLevels: [9, 6, 3, 0, -3, -6, -9],
         soaLevels: [-300, -200, -100, 0, 100, 200, 300],
         snrMode: 'adaptive',
         startValue: 6,
         repetitions: 5
       },
-      pre: { snrLevels: [9, 6, 3], soaLevels: [-200, 0, 200], repetitions: 3 },
-      post: { snrLevels: [9, 6, 3], soaLevels: [-200, 0, 200], repetitions: 3 }
+      pre: { snrLevels: [9, 6, 3, 0, -3, -6, -9], soaLevels: [-300, -200, -100, 0, 100, 200, 300], repetitions: 3 },
+      post: { snrLevels: [9, 6, 3, 0, -3, -6, -9], soaLevels: [-300, -200, -100, 0, 100, 200, 300], repetitions: 3 }
     },
     4: { // 功能四：注意定位训练
       train: {
-        snrLevels: [9, 6, 3, 0, -3],
+        snrLevels: [9, 6, 3, 0, -3, -6, -9],
         attLevels: ['single', 'dual'],
         snrMode: 'adaptive',
         startValue: 6,
         repetitions: 5
       },
-      pre: { snrLevels: [9, 6, 3], attLevels: ['single', 'dual'], repetitions: 3 },
-      post: { snrLevels: [9, 6, 3], attLevels: ['single', 'dual'], repetitions: 3 }
+      pre: { snrLevels: [9, 6, 3, 0, -3, -6, -9], attLevels: ['single', 'dual'], repetitions: 3 },
+      post: { snrLevels: [9, 6, 3, 0, -3, -6, -9], attLevels: ['single', 'dual'], repetitions: 3 }
     }
   };
 

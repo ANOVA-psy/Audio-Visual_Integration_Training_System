@@ -123,9 +123,12 @@
 
   // 页面加载时先从服务端加载数据，再渲染历史记录
   window.addEventListener('DOMContentLoaded', async () => {
-    // 先尝试从服务端加载最新数据
-    if (typeof DataManager !== 'undefined' && DataManager.loadData) {
-      await DataManager.loadData();
+    // 只有当本地没有数据时才从服务器加载
+    const localData = localStorage.getItem('audioVisualTrainingData');
+    if (!localData || localData === '[]' || JSON.parse(localData || '[]').length === 0) {
+      if (typeof DataManager !== 'undefined' && DataManager.loadData) {
+        await DataManager.loadData();
+      }
     }
     setTimeout(() => {
       const hc = document.getElementById('historyContent');

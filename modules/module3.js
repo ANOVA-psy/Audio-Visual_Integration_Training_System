@@ -149,19 +149,20 @@ const Module3 = (function() {
     return results;
   }
 
-  // ==================== 整合时窗计算 ====================
+ // ==================== 整合时窗计算 ====================
   /**
    * 计算整合时窗宽度（心理物理曲线拟合法）
    * 拟合 SOA → 正确率 曲线，计算正确率 ≥ criterion 的 SOA 范围
+   * 区分计算视觉领先（V-first, SOA < 0）和听觉领先（A-first, SOA > 0）的时窗宽度
    * @param {Array} [data] - 外部传入的结果（可选）
-   * @returns {Object|null} { window, lowerSOA, upperSOA, fit }
+   * @returns {Object|null} { window, visualLeadWindow, audioLeadWindow, lowerSOA, upperSOA, fit }
    */
   function calculateIntegrationWindow(data) {
     const input = data || results;
     if (!input || input.length < 5) return null;
 
     const fit = Psychometric.fit(input, 'soa', {
-      gamma:    Config.PSY_GAMMA,
+      gamma:     Config.PSY_GAMMA,
       lambda:    Config.PSY_LAMBDA,
       criterion: Config.PSY_CRITERION
     });
@@ -171,18 +172,35 @@ const Module3 = (function() {
     const crit     = Config.PSY_CRITERION;
     const validSOAs = fit.data.filter(d => (d.k / d.n) >= crit);
 
-    let windowWidth = null;
-    let lowerSOA   = null;
-    let upperSOA   = null;
+    let windowWidth      = null;
+    let visualLeadWindow = null; // 视觉领先时窗宽度 (V-first, SOA < 0)
+    let audioLeadWindow  = null; // 听觉领先时窗宽度 (A-first, SOA > 0)
+    let lowerSOA         = null;
+    let upperSOA         = null;
 
     if (validSOAs.length > 0) {
       const vals = validSOAs.map(d => d.x);
       lowerSOA   = Math.min(...vals);
       upperSOA   = Math.max(...vals);
+      
+      // 1. 总时窗宽度
       windowWidth = upperSOA - lowerSOA;
+
+      // 2. 视觉领先时窗宽度 (SOA 为负数代表视觉领先，距离 0 ms 的绝对值即为宽度)
+      visualLeadWindow = lowerSOA < 0 ? Math.abs(lowerSOA) : 0;
+
+      // 3. 听觉领先时窗宽度 (SOA 为正数代表听觉领先，距离 0 ms 的值即为宽度)
+      audioLeadWindow = upperSOA > 0 ? upperSOA : 0;
     }
 
-    return { window: windowWidth, lowerSOA, upperSOA, fit };
+    return { 
+      window: windowWidth,           // 总时窗宽度
+      visualLeadWindow: visualLeadWindow, // 视觉领先时窗宽度 (V-first)
+      audioLeadWindow: audioLeadWindow,   // 听觉领先时窗宽度 (A-first)
+      lowerSOA, 
+      upperSOA, 
+      fit 
+    };
   }
 
   // ==================== 公共 API ====================

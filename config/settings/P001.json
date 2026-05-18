@@ -1,0 +1,41 @@
+{
+  "subjectId": "P001",
+  "gender": "",
+  "age": "",
+  "createdAt": "2026-05-18T09:56:34.573Z",
+  "phases": {
+    "func3_pre": {
+      "phase": "pre",
+      "func": 3,
+      "timestamp": "2026-05-18T09:56:34.573Z",
+      "settings": {
+        "snrLevels": [
+          9,
+          6,
+          3,
+          0,
+          -3,
+          -6,
+          -9
+        ],
+        "blurLevels": [],
+        "soaLevels": [
+          -300,
+          -200,
+          -100,
+          0,
+          100,
+          200,
+          300
+        ],
+        "attLevels": [
+          "single",
+          "dual"
+        ],
+        "repetitions": 3,
+        "order": "random"
+      }
+    }
+  },
+  "updatedAt": "2026-05-18T09:56:34.573Z"
+}

@@ -17,11 +17,13 @@ app.use(express.static(__dirname));
 // 确保 data 目录存在
 const DATA_DIR = path.join(__dirname, 'data');
 const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
+const CONFIG_DIR = path.join(__dirname, 'config', 'settings');
 
 async function ensureDirectories() {
   try {
     await fs.mkdir(DATA_DIR, { recursive: true });
     await fs.mkdir(UPLOADS_DIR, { recursive: true });
+    await fs.mkdir(CONFIG_DIR, { recursive: true });
     console.log('Data directories created/confirmed');
   } catch (err) {
     console.error('Create directory failed:', err);
@@ -157,6 +159,104 @@ app.get('/api/files', async (req, res) => {
     res.json(fileStats);
   } catch (err) {
     console.error('List files failed:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==================== 配置文件 API ====================
+
+// 保存配置文件
+// 新格式：文件名 = {subjectId}.json（单个文件包含该被试所有配置）
+// 旧格式：文件名 = {subjectId}_{phase}_func{func}.json（兼容）
+app.post('/api/save-config', async (req, res) => {
+  try {
+    const { filename, data } = req.body;
+    if (!filename || !data) {
+      return res.status(400).json({ error: 'Missing filename or data' });
+    }
+
+    const filePath = path.join(CONFIG_DIR, filename);
+    await fs.writeFile(filePath, JSON.stringify(data, null, 2));
+
+    console.log('[Config] 已保存配置文件:', filename);
+    res.json({ success: true, filename, path: filePath });
+  } catch (err) {
+    console.error('Save config failed:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 加载配置文件
+// 支持新格式（被试单文件）和旧格式（多文件）
+app.get('/api/load-config', async (req, res) => {
+  try {
+    const filename = req.query.filename;
+    if (!filename) {
+      return res.status(400).json({ error: 'Missing filename parameter' });
+    }
+
+    const filePath = path.join(CONFIG_DIR, filename);
+
+    try {
+      const content = await fs.readFile(filePath, 'utf8');
+      const data = JSON.parse(content);
+      res.json(data);
+    } catch (e) {
+      // 文件不存在或读取失败
+      res.status(404).json({ error: 'Config file not found', filename });
+    }
+  } catch (err) {
+    console.error('Load config failed:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 列出所有配置文件
+// 新格式：返回唯一的被试ID列表（去重）
+app.get('/api/list-configs', async (req, res) => {
+  try {
+    const files = await fs.readdir(CONFIG_DIR);
+    const configFiles = files.filter(f => f.endsWith('.json'));
+
+    // 提取唯一的被试ID（去掉 _phase_func.json 后缀或 .json 后缀）
+    const subjectIds = new Set();
+    configFiles.forEach(f => {
+      // 新格式：{subjectId}.json
+      if (!f.includes('_')) {
+        subjectIds.add(f.replace('.json', ''));
+      } else {
+        // 旧格式：{subjectId}_{phase}_func{func}.json
+        const parts = f.replace('.json', '').split('_');
+        if (parts.length >= 1) {
+          subjectIds.add(parts[0]);
+        }
+      }
+    });
+
+    res.json(Array.from(subjectIds));
+  } catch (err) {
+    console.error('List configs failed:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 删除配置文件
+// 支持删除被试的所有配置文件（新格式单文件，或旧格式多文件）
+app.delete('/api/delete-config/:filename', async (req, res) => {
+  try {
+    const filename = req.params.filename;
+    const filePath = path.join(CONFIG_DIR, filename);
+
+    try {
+      await fs.unlink(filePath);
+      console.log('[Config] 已删除配置文件:', filename);
+    } catch (e) {
+      // 文件不存在，忽略错误
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Delete config failed:', err);
     res.status(500).json({ error: err.message });
   }
 });

@@ -173,6 +173,9 @@
       </button>
     </div>
 
+    <!-- 缓存提示 -->
+    <div id="cacheHintContainer" class="mt-4"></div>
+
     <!-- 底部管理员入口 -->
     <div class="text-center">
       <a href="admin.html" 
@@ -921,6 +924,7 @@
 
 <!-- JS加载 -->
 <script src="config/constants.js"></script>
+<script src="js/preloader.js"></script>
 <script src="js/uiHelper.js"></script>
 <script src="js/core/Staircase.js"></script>
 <script src="js/core/EventLogger.js"></script>
@@ -934,5 +938,61 @@
 <script src="modules/module3.js"></script>
 <script src="modules/module4.js"></script>
 <script src="js/app.js"></script>
+
+<!-- 初始化：从 localStorage 读取上次使用的被试编号、性别和年龄 -->
+<script>
+  (function() {
+    try {
+      const lastSubjectId = localStorage.getItem('lastSubjectId');
+      const lastGender = localStorage.getItem('lastGender');
+      const lastAge = localStorage.getItem('lastAge');
+
+      if (lastSubjectId) {
+        const subjectInput = document.getElementById('quickSubjectId');
+        if (subjectInput) subjectInput.value = lastSubjectId;
+      }
+
+      if (lastGender) {
+        const genderSelect = document.getElementById('quickGender');
+        if (genderSelect) genderSelect.value = lastGender;
+      }
+
+      if (lastAge) {
+        const ageInput = document.getElementById('quickAge');
+        if (ageInput) ageInput.value = lastAge;
+      }
+
+      console.log('[Init] 已从 localStorage 恢复：', { subjectId: lastSubjectId, gender: lastGender, age: lastAge });
+    } catch (e) {
+      console.warn('[Init] 从 localStorage 读取失败', e);
+    }
+
+    // 显示缓存提示
+    if (typeof Preloader !== 'undefined') {
+      setTimeout(() => {
+        Preloader.showCacheHint('cacheHintContainer');
+      }, 1500); // 延迟显示，避免与预加载横幅冲突
+    }
+
+    // 检查 URL 参数，是否要查看历史记录结果
+    const urlParams = new URLSearchParams(window.location.search);
+    const viewResultId = urlParams.get('viewResult');
+    if (viewResultId && typeof DataManager !== 'undefined') {
+      setTimeout(() => {
+        const data = DataManager.loadResultFromHistory(viewResultId);
+        if (data) {
+          // 加载历史记录到结果页面
+          if (typeof showResultFromHistory === 'function') {
+            showResultFromHistory(data);
+          } else {
+            console.warn('[Init] showResultFromHistory 函数未定义');
+          }
+        } else {
+          console.warn('[Init] 未找到记录:', viewResultId);
+        }
+      }, 1000); // 等待所有 JS 加载完成
+    }
+  })();
+</script>
 </body>
 </html>
