@@ -177,7 +177,7 @@ const AdminSettings = (function () {
       attLevels: ['single', 'dual'],
       repetitions: reps,
       snrMode: 'adaptive',
-      orderState: { snr: 'random', blur: 'random', soa: 'random', att: 'random' }
+      orderState: { snr: 'seq', blur: 'seq', soa: 'seq', att: 'seq' }
     };
   }
 
@@ -234,7 +234,7 @@ const AdminSettings = (function () {
     const varTypes = ['snr', 'blur', 'soa', 'att'];
     const colorMap = { snr: 'blue', blur: 'purple', soa: 'orange', att: 'green' };
     varTypes.forEach(function (vt) {
-      const mode = (typeof orders === 'string') ? orders : (orders[vt] || 'random');
+      const mode = (typeof orders === 'string') ? orders : (orders[vt] || 'seq');
       // 触发 setOrder 恢复按钮视觉（如果 setOrder 已定义）
       if (typeof window.setOrder === 'function' && window.setOrder.toString().indexOf('function() {}') === -1) {
         window.setOrder(vt, mode);
@@ -244,7 +244,7 @@ const AdminSettings = (function () {
         const btnS = document.getElementById(vt + 'OrderS');
         if (btnR && btnS) {
           const c = colorMap[vt] || 'blue';
-          if (mode === 'random') {
+          if (mode === 'seq') {
             btnR.className = 'px-2 py-0.5 rounded bg-' + c + '-200 font-medium';
             btnS.className = 'px-2 py-0.5 rounded bg-gray-100';
           } else {

@@ -529,8 +529,8 @@ const DataManager = (function () {
      ================================================================== */
 
   function viewDetail(id) {
-    // 跳转到 index.html 的结果页面，并传递记录 ID
-    window.location.href = `index.html?viewResult=${id}`;
+    // 跳转到 result.html 结果页面，并传递记录 ID
+    window.location.href = `result.html?id=${id}`;
   }
 
   function deleteDataConfirm(id) {

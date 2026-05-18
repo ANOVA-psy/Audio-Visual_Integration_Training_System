@@ -725,7 +725,7 @@
         const soaSlider = document.getElementById('previewSOASlider');
         const blurSlider3 = document.getElementById('previewBlurSlider3');
         const soa = soaSlider ? parseInt(soaSlider.value) : 0;
-        
+
         if (video) {
           video.currentTime = 0;
           // 应用模糊度
@@ -735,23 +735,78 @@
           } else {
             video.style.filter = 'none';
           }
-          
-          if (soa >= 0) {
-            await video.play();
-            if (soa > 0) await new Promise(r => setTimeout(r, soa));
-          }
         }
+
         console.log('[playPreview] 功能3预览，SNR:', snr, 'SOA:', soa, '音频:', previewMat.audio);
-        await AudioProcessor.playMixedAudioFile(previewMat.audio, snr);
-        // 若音频比视频短，等视频播完
-        if (video && !video.paused) {
-          await new Promise(r => {
-            video.onended = r;
-            // 超时保护：3秒后强制继续
-            setTimeout(r, 3000);
+
+        // 根据 SOA 播放视频和音频
+        if (soa > 0) {
+          // 视频提前：先播放视频，延迟后播放音频
+          if (video) await video.play();
+          await new Promise(r => setTimeout(r, soa));
+          await AudioProcessor.playMixedAudioFile(previewMat.audio, snr);
+          // 等待视频播放完成
+          if (video && !video.paused) {
+            await new Promise(r => {
+              video.onended = r;
+              setTimeout(r, 5000);
+            });
+          }
+          if (video) { video.pause(); video.currentTime = 0; }
+        } else if (soa < 0) {
+          // 音频提前：先播放音频，延迟后播放视频
+          // 音频和视频都要播放完成才算结束
+          let audioDone = false;
+          let videoDone = false;
+
+          const audioPromise = AudioProcessor.playMixedAudioFile(previewMat.audio, snr)
+            .then(() => { audioDone = true; })
+            .catch(e => { console.error('[playPreview] 音频播放失败:', e); audioDone = true; });
+
+          // 等待 SOA 时间后播放视频
+          await new Promise(r => setTimeout(r, Math.abs(soa)));
+
+          // 确保视频已加载
+          if (video) {
+            if (video.readyState < 2) {
+              await new Promise(r => { video.onloadeddata = r; video.load(); });
+            }
+            await video.play();
+          }
+
+          // 等待音频和视频都完成
+          await new Promise(resolve => {
+            let resolved = false;
+            const doResolve = () => { if (!resolved) { resolved = true; resolve(); } };
+
+            const checkDone = () => { if (audioDone && videoDone) doResolve(); };
+
+            if (video) {
+              video.onended = () => { videoDone = true; checkDone(); };
+              if (video.ended) { videoDone = true; checkDone(); }
+            } else {
+              videoDone = true;
+            }
+
+            audioPromise.then(checkDone);
+
+            // 超时保护
+            setTimeout(() => { videoDone = true; audioDone = true; doResolve(); }, 10000);
           });
+
+          if (video) { video.pause(); video.currentTime = 0; }
+        } else {
+          // 同步播放
+          if (video) await video.play();
+          await AudioProcessor.playMixedAudioFile(previewMat.audio, snr);
+          if (video && !video.paused) {
+            await new Promise(r => {
+              video.onended = r;
+              setTimeout(r, 5000);
+            });
+          }
+          if (video) { video.pause(); video.currentTime = 0; }
         }
-        if (video) { video.pause(); video.currentTime = 0; }
       } else if (STATE.func === 4) {
         // 功能4：目标视频 + 干扰视频 + 音频
         // 根据目标位置决定哪个视频是目标
@@ -1484,6 +1539,13 @@
       if (STATE.func === 1) {
         // 纯音频，用试次对应音频文件
         await AudioProcessor.playMixedAudioFile(mat.audio, trial.snr);
+        // 播放完成提示
+        UIHelper.showNotification('播放完成，请选择答案', 'success', 1500);
+        // 播放完后才开始计时
+        STATE.isPlaying = false;
+        STATE.isWaitingForResponse = true;
+        STATE.responseStartTime = Date.now();
+        updatePlayButton(false);
       } else if (STATE.func === 2) {
         // 更新视频为本次试次对应材料
         const video = document.getElementById('expVideo');
@@ -1506,8 +1568,31 @@
           await video.play();
         }
         await AudioProcessor.playMixedAudioFile(mat.audio, trial.snr);
+        // 等待视频播放完成
+        if (video && !video.ended) {
+          await new Promise(resolve => {
+            video.onended = resolve;
+            setTimeout(resolve, 8000); // 超时保护
+          });
+        }
+        // 播放完成提示
+        UIHelper.showNotification('播放完成，请选择答案', 'success', 1500);
+        video.pause();
+        video.currentTime = 0;
+        // 播放完后才开始计时
+        STATE.isPlaying = false;
+        STATE.isWaitingForResponse = true;
+        STATE.responseStartTime = Date.now();
+        updatePlayButton(false);
       } else if (STATE.func === 3) {
         await playWithSOA(trial, mat);
+        // playWithSOA 内部会设置 isWaitingForResponse
+        // 播放完成提示
+        UIHelper.showNotification('播放完成，请选择答案', 'success', 1500);
+        STATE.isPlaying = false;
+        STATE.isWaitingForResponse = true;
+        STATE.responseStartTime = Date.now();
+        updatePlayButton(false);
       } else if (STATE.func === 4) {
         // ★ 修复：根据 trial.targetSide 动态设置视频源和标签
         const targetSide = trial.targetSide || 'left';
@@ -1643,19 +1728,80 @@
       });
     } else if (soa < 0) {
       // 音频提前：先播放音频，延迟播放视频
-      const audioPromise = AudioProcessor.playMixedAudioFile(mat.audio, trial.snr);
-      // 不等待音频完成，让音频和视频可以同时播放
-      audioPromise.then(() => {
-        console.log('[playWithSOA] 音频播放完成');
-      }).catch(e => console.error('[playWithSOA] 音频播放失败:', e));
-      
+      // 音频和视频都要播放完成才算结束
+      let audioDone = false;
+      let videoDone = false;
+      let audioError = null;
+
+      // 启动音频播放
+      const audioPromise = AudioProcessor.playMixedAudioFile(mat.audio, trial.snr)
+        .then(() => {
+          audioDone = true;
+          console.log('[playWithSOA] 音频播放完成');
+        })
+        .catch(e => {
+          audioError = e;
+          audioDone = true;
+          console.error('[playWithSOA] 音频播放失败:', e);
+        });
+
+      // 等待 SOA 时间后播放视频
       await new Promise(r => setTimeout(r, Math.abs(soa)));
+
+      // 确保视频元素已加载
+      if (video.readyState < 2) {
+        await new Promise(r => {
+          video.onloadeddata = r;
+          video.load();
+        });
+      }
+
       await video.play();
-      // 等待视频播放完成（音频可能已经完成）
+
+      // 等待音频和视频都完成
       await new Promise(resolve => {
-        video.onended = resolve;
-        // 超时保护
-        setTimeout(resolve, 8000);
+        let resolved = false;
+
+        const doResolve = () => {
+          if (!resolved) {
+            resolved = true;
+            resolve();
+          }
+        };
+
+        const checkDone = () => {
+          if (audioDone && videoDone) {
+            doResolve();
+          }
+        };
+
+        // 监听视频结束
+        video.onended = () => {
+          videoDone = true;
+          console.log('[playWithSOA] 视频播放完成');
+          checkDone();
+        };
+
+        // 如果视频很短，可能已经结束了
+        if (video.ended) {
+          videoDone = true;
+          checkDone();
+        }
+
+        // 如果音频还没完成，等待音频
+        if (!audioDone) {
+          audioPromise.then(checkDone);
+        } else {
+          checkDone();
+        }
+
+        // 超时保护（视频长度 + 音频长度 + 缓冲，最多15秒）
+        setTimeout(() => {
+          console.warn('[playWithSOA] 超时，强制结束');
+          videoDone = true;
+          audioDone = true;
+          doResolve();
+        }, 15000);
       });
     } else {
       // 同步播放
@@ -1917,19 +2063,29 @@
           phase:     STATE.phase,
           func:      STATE.func,
           snrMode:   STATE.snrMode,
-          attemptNumber: STATE.currentAttempt || 1,  // 新增
+          attemptNumber: STATE.currentAttempt || 1,
+          gender:    STATE.gender,
+          age:       STATE.age,
           threshold, fitResult,
           eventLog: EventLogger.toJSON()
         };
-        DataManager.saveExperimentData(metadata, STATE.results);
+        // 保存到历史记录，获取记录ID
+        const recordId = DataManager.saveExperimentData(metadata, STATE.results);
         DataManager.downloadToLocal(metadata, STATE.results, fitResult);
+        console.log('[showResults] 数据已保存，recordId:', recordId);
+
+        // 跳转到 result.html 显示结果
+        if (recordId) {
+          window.location.href = `result.html?id=${recordId}`;
+          return;
+        }
       } catch(e) {
         console.error('[Save] 保存失败:', e);
       }
     }
 
-    UIHelper.showScreen('results');
-    updateResultsUI();
+    // 如果保存失败，跳转到历史记录页面
+    window.location.href = 'history.html';
   }
 
   function updateResultsUI() {

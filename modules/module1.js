@@ -40,7 +40,7 @@ const Module1 = (function () {
    * @param {Object} config
    * @param {number[]} config.snrLevels - SNR 级别
    * @param {number} [config.repetitions=3] - 每级重复次数
-   * @param {string} [config.order='random'] - 'random' | 'sequential'
+   * @param {string} [config.order='random'] - 'random' | 'seq'
    * @returns {Array<Object>} 试次数组
    */
   function generateTrialQueue(config) {

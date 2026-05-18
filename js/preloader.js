@@ -1,12 +1,14 @@
 /**
- * @fileOverview 实验材料预加载模块
+ * @fileOverview 实验材料预加载模块（使用 Cache API 持久化缓存）
  * 功能：
- * 1. 预加载所有视频、音频文件到浏览器缓存
- * 2. 显示缓存进度 UI（横幅提示 + 进度条）
- * 3. 实验前检查预加载状态，未完成时提示用户等待
- * 4. 支持公网环境，防止实验过程中卡顿
+ * 1. 使用 Cache API 缓存所有视频、音频文件
+ * 2. 页面刷新后直接从缓存读取，无需重新下载
+ * 3. 显示缓存进度 UI（横幅提示 + 进度条）
+ * 4. 实验前检查预加载状态，未完成时提示用户等待
+ * 5. 支持公网环境，防止实验过程中卡顿
  */
 
+const CACHE_NAME = 'av-training-v1';
 const Preloader = (function () {
   'use strict';
 
@@ -31,6 +33,39 @@ const Preloader = (function () {
   let isPreloading = false;
   let isComplete = false;
   let preloadPromise = null;
+
+  // ==================== 缓存管理 ====================
+
+  /**
+   * 检查文件是否已在缓存中
+   * @param {string} url
+   * @returns {Promise<boolean>}
+   */
+  async function isCached(url) {
+    if (!('caches' in window)) return false;
+    try {
+      const cache = await caches.open(CACHE_NAME);
+      const response = await cache.match(url);
+      return !!response;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /**
+   * 从缓存中删除旧版本缓存
+   */
+  async function clearOldCaches() {
+    if (!('caches' in window)) return;
+    try {
+      const keys = await caches.keys();
+      await Promise.all(
+        keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))
+      );
+    } catch (e) {
+      console.warn('[Preloader] 清理旧缓存失败:', e);
+    }
+  }
 
   // ==================== 创建 UI ====================
 
@@ -227,25 +262,31 @@ const Preloader = (function () {
   // ==================== 预加载逻辑 ====================
 
   /**
-   * 预加载单个文件（使用 fetch + blob 缓存）
+   * 预加载单个文件（使用 Cache API 缓存）
    * @param {string} url - 文件 URL
    * @returns {Promise<void>}
    */
   async function preloadFile(url) {
     try {
+      // 先检查是否已缓存
+      if (await isCached(url)) {
+        loadedFiles++;
+        console.log(`[Preloader] 已缓存: ${url} (${loadedFiles}/${totalFiles})`);
+        updateProgress();
+        return;
+      }
+
       const response = await fetch(url, {
         method: 'GET',
-        cache: 'force-cache',
-        mode: 'cors'
+        cache: 'default'
       });
 
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-      // 对于视频/音频，读取完整内容以触发浏览器缓存
-      if (url.match(/\.(mp4|wav)$/i)) {
-        await response.blob();
-      } else {
-        await response.text();
+      // 存入 Cache API
+      if ('caches' in window) {
+        const cache = await caches.open(CACHE_NAME);
+        await cache.put(url, response);
       }
 
       loadedFiles++;
@@ -259,12 +300,23 @@ const Preloader = (function () {
   }
 
   /**
-   * 预加载视频文件（使用 video 元素）
+   * 预加载视频文件（使用 Cache API 缓存）
    * @param {string} url - 视频 URL
    * @returns {Promise<void>}
    */
   function preloadVideo(url) {
     return new Promise((resolve) => {
+      // 先检查是否已缓存
+      isCached(url).then(cached => {
+        if (cached) {
+          loadedFiles++;
+          console.log(`[Preloader] 视频已缓存: ${url} (${loadedFiles}/${totalFiles})`);
+          updateProgress();
+          resolve();
+          return;
+        }
+      });
+
       const video = document.createElement('video');
       video.preload = 'auto';
       video.src = url;
@@ -277,7 +329,17 @@ const Preloader = (function () {
         video.remove();
       };
 
-      video.addEventListener('canplaythrough', () => {
+      video.addEventListener('canplaythrough', async () => {
+        // 存入 Cache API
+        try {
+          if ('caches' in window) {
+            const cache = await caches.open(CACHE_NAME);
+            const response = await fetch(url);
+            if (response.ok) await cache.put(url, response);
+          }
+        } catch (e) {
+          console.warn('[Preloader] 视频缓存失败:', e);
+        }
         loadedFiles++;
         console.log(`[Preloader] 视频已缓存: ${url} (${loadedFiles}/${totalFiles})`);
         cleanup();
@@ -299,9 +361,10 @@ const Preloader = (function () {
 
   /**
    * 开始预加载所有材料
+   * 如果文件已在 Cache API 中，跳过下载
    * @returns {Promise<void>}
    */
-  function startPreload() {
+  async function startPreload() {
     if (isPreloading) return preloadPromise;
     if (isComplete) return Promise.resolve();
 
@@ -310,9 +373,33 @@ const Preloader = (function () {
     loadedFiles = 0;
     failedFiles = 0;
 
+    // 先检查已有缓存，避免重复计数
+    const cache = ('caches' in window) ? await caches.open(CACHE_NAME) : null;
+    if (cache) {
+      for (const url of [...VIDEO_FILES, ...AUDIO_FILES]) {
+        const match = await cache.match(url);
+        if (match) loadedFiles++;
+      }
+      // 如果已全部缓存，直接完成
+      if (loadedFiles >= totalFiles) {
+        isComplete = true;
+        isPreloading = false;
+        console.log('[Preloader] 所有文件已在缓存中，无需重新下载');
+        updateProgress();
+        const banner = document.getElementById('preloadBanner');
+        if (banner) {
+          banner.classList.add('complete');
+          const icon = banner.querySelector('.preload-icon');
+          if (icon) icon.textContent = '✅';
+          const title = banner.querySelector('.preload-title');
+          if (title) title.textContent = '✅ 实验材料已缓存，可以开始实验！';
+        }
+        return Promise.resolve();
+      }
+    }
+
     createPreloadBanner();
     showBanner();
-
     updateProgress();
 
     preloadPromise = (async () => {
