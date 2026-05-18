@@ -101,6 +101,160 @@
 </head>
 <body class="bg-slate-100 min-h-screen">
 
+<!-- ❓ 左上角 FAQ 抽屉（fixed 浮于全页面之上） -->
+<div id="patientFAQ">
+  <button id="faqToggleBtn" type="button" aria-label="常见疑问" title="常见疑问">
+    <span id="faqToggleIcon">💬</span>
+    <span class="faq-toggle-label">常见疑问</span>
+  </button>
+  <div id="faqDrawer" role="dialog" aria-labelledby="faqDrawerTitle">
+    <div class="faq-drawer-header">
+      <div>
+        <div id="faqDrawerTitle" class="faq-drawer-title">💬 常见疑问 · 给您的小贴士</div>
+        <div class="faq-drawer-sub">点击下方问题展开解答，让您更安心地训练</div>
+      </div>
+      <button id="faqCloseBtn" type="button" aria-label="关闭" title="关闭">×</button>
+    </div>
+    <div id="faqList" class="faq-drawer-body"></div>
+  </div>
+  <div id="faqMask"></div>
+</div>
+<style>
+  /* === 触发按钮（左上角竖排） === */
+  #patientFAQ #faqToggleBtn {
+    position: fixed;
+    left: 0;
+    top: 80px;
+    z-index: 60;
+    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+    color: #fff;
+    border: none;
+    border-radius: 0 14px 14px 0;
+    padding: 14px 10px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    box-shadow: 2px 4px 14px rgba(99, 102, 241, 0.35);
+    font-weight: 600;
+    transition: padding 0.2s, box-shadow 0.2s;
+  }
+  #patientFAQ #faqToggleBtn:hover { padding-right: 14px; box-shadow: 4px 6px 18px rgba(99, 102, 241, 0.5); }
+  #patientFAQ #faqToggleIcon { font-size: 22px; }
+  #patientFAQ .faq-toggle-label {
+    writing-mode: vertical-rl;
+    text-orientation: upright;
+    font-size: 13px;
+    letter-spacing: 4px;
+  }
+
+  /* === 抽屉面板（从左侧滑出） === */
+  #patientFAQ #faqDrawer {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    width: 420px;
+    max-width: 92vw;
+    background: #ffffff;
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.18);
+    transform: translateX(-100%);
+    transition: transform 0.32s cubic-bezier(.4, 0, .2, 1);
+    z-index: 70;
+    display: flex;
+    flex-direction: column;
+  }
+  #patientFAQ.open #faqDrawer { transform: translateX(0); }
+
+  /* === 遮罩 === */
+  #patientFAQ #faqMask {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+    backdrop-filter: blur(2px);
+    z-index: 65;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s;
+  }
+  #patientFAQ.open #faqMask { opacity: 1; pointer-events: auto; }
+
+  /* === 抽屉内容样式 === */
+  #patientFAQ .faq-drawer-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 18px 20px;
+    border-bottom: 1px solid #e5e7eb;
+    background: linear-gradient(135deg, #eff6ff 0%, #faf5ff 100%);
+  }
+  #patientFAQ .faq-drawer-title { font-size: 17px; font-weight: 700; color: #1f2937; }
+  #patientFAQ .faq-drawer-sub { font-size: 12px; color: #6b7280; margin-top: 4px; }
+  #patientFAQ #faqCloseBtn {
+    background: transparent;
+    border: none;
+    font-size: 28px;
+    cursor: pointer;
+    color: #9ca3af;
+    line-height: 1;
+    padding: 0 6px;
+    transition: color 0.15s;
+  }
+  #patientFAQ #faqCloseBtn:hover { color: #4b5563; }
+
+  #patientFAQ .faq-drawer-body {
+    overflow-y: auto;
+    padding: 16px 20px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  #patientFAQ details {
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+    transition: all 0.2s ease;
+  }
+  #patientFAQ details[open] {
+    background: linear-gradient(135deg, #eff6ff 0%, #faf5ff 100%);
+    border-color: #c7d2fe;
+    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.1);
+  }
+  #patientFAQ summary {
+    cursor: pointer;
+    padding: 12px 16px;
+    font-weight: 600;
+    color: #1f2937;
+    list-style: none;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    outline: none;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  #patientFAQ summary::-webkit-details-marker { display: none; }
+  #patientFAQ summary::before {
+    content: '❓';
+    flex-shrink: 0;
+    font-size: 16px;
+  }
+  #patientFAQ details[open] summary::before { content: '💡'; }
+  #patientFAQ .faq-answer {
+    padding: 4px 16px 14px 42px;
+    color: #4b5563;
+    font-size: 13.5px;
+    line-height: 1.75;
+  }
+  #patientFAQ .faq-answer .highlight {
+    color: #6366f1;
+    font-weight: 600;
+  }
+</style>
+
 <!-- ================================================================
   屏幕 A：快速开始（面向病人/用户）
 ================================================================ -->
@@ -428,6 +582,7 @@
 <script src="js/dataManager.js"></script>
 <script src="js/charts.js"></script>
 <script src="js/adminSettings.js"></script>
+<script src="js/adaptiveEngine.js"></script>
 <script src="modules/module1.js"></script>
 <script src="modules/module2.js"></script>
 <script src="modules/module3.js"></script>
@@ -468,7 +623,58 @@
         Preloader.showCacheHint('cacheHintContainer');
       }, 1500); // 延迟显示，避免与预加载横幅冲突
     }
+
+    // 渲染患者 FAQ
+    renderPatientFAQ();
   })();
+
+  // ==================== 患者 FAQ 渲染 ====================
+  function renderPatientFAQ() {
+    const list = document.getElementById('faqList');
+    if (!list) return;
+
+    const faqs = [
+      {
+        q: '为什么我觉得训练有时候变得特别难，甚至听不清单词？',
+        a: '请不用担心，这是系统的<span class="highlight">"聪明之处"</span>。系统正根据您当下的状态寻找您的"能力边界"——只有让任务保持在<strong>有一点点挑战</strong>的水平，您的大脑听觉皮层才能得到最好的锻炼。听不清时放松心态，<strong>猜一个最可能的答案</strong>即可，错了也完全没关系。'
+      },
+      {
+        q: '看口型的时候，为什么有时候嘴巴和声音好像对不上，甚至嘴巴动了声音还没出来？',
+        a: '这是我们在故意训练您大脑的<span class="highlight">"时序校准能力"</span>。在现实生活中（比如看远处的说话人、视频通话有延迟），声音和口型经常不同步。通过这种延迟挑战，能让您的大脑学会<strong>更宽容、更快速地整合视觉与听觉信息</strong>，让您在真实环境中沟通更轻松。'
+      },
+      {
+        q: '双人说话的训练太让人崩溃了，我总是被旁边的人带偏，这正常吗？',
+        a: '这完全正常！这就是经典的<span class="highlight">"鸡尾酒会效应"挑战</span>。您的任务是锻炼额叶的<strong>"注意抑制能力"</strong>，就像在嘈杂的餐厅里只听朋友说话。觉得困难恰恰说明您正在重塑这项高级注意功能——坚持下去，您的"干扰阻断器"就会越来越强。'
+      },
+      {
+        q: '这个训练每天要做多久？那个"综合认知得分"提升意味着什么？',
+        a: '建议每天坚持训练 <strong>20–30 分钟</strong>。您的<span class="highlight">"综合认知得分（AVIS）"</span>融合了您的<strong>听觉敏感度、看口型获益度、时空整合精准度以及抗干扰能力</strong>。分数稳步上升，意味着您在嘈杂环境（如菜市场、家庭聚会）中的实际交流和聆听能力正在变得越来越轻松。'
+      }
+    ];
+
+    list.innerHTML = faqs.map((item, i) => `
+      <details ${i === 0 ? 'open' : ''}>
+        <summary>Q${i + 1}. ${item.q}</summary>
+        <div class="faq-answer">${item.a}</div>
+      </details>
+    `).join('');
+
+    // 绑定抽屉开关
+    const root      = document.getElementById('patientFAQ');
+    const toggleBtn = document.getElementById('faqToggleBtn');
+    const closeBtn  = document.getElementById('faqCloseBtn');
+    const mask      = document.getElementById('faqMask');
+    if (!root || !toggleBtn) return;
+
+    const open  = () => root.classList.add('open');
+    const close = () => root.classList.remove('open');
+    toggleBtn.onclick = open;
+    closeBtn.onclick  = close;
+    mask.onclick      = close;
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && root.classList.contains('open')) close();
+    });
+  }
 </script>
 </body>
 </html>

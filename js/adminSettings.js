@@ -164,21 +164,83 @@ const AdminSettings = (function () {
     localStorage.removeItem(STORAGE_KEY);
   }
 
-  // ==================== 默认设置 ====================
+  // ==================== 最近被试 ====================
 
-  function getDefaultSettings(func, phase) {
-    const reps = (phase === 'train') ? 5 : 3;
+  /**
+   * 获取最近更新/创建的被试信息
+   * 从所有已保存的settings中按 updatedAt/createdAt 排序，返回最近的一个
+   * @returns {{ subjectId: string, gender: string, age: string }|null}
+   */
+  function getLatestSubject() {
+    const all = getAllSettings();
+    const subjects = Object.values(all);
+
+    if (subjects.length === 0) return null;
+
+    // 按 updatedAt 降序排列，没有 updatedAt 的按 createdAt
+    subjects.sort(function (a, b) {
+      const timeA = a.updatedAt || a.createdAt || '';
+      const timeB = b.updatedAt || b.createdAt || '';
+      return timeB.localeCompare(timeA);
+    });
+
+    const latest = subjects[0];
+    return {
+      subjectId: latest.subjectId || '',
+      gender:    latest.gender || '',
+      age:       latest.age || ''
+    };
+  }
+
+  // ==================== 预设配置（数据驱动，不依赖 UI） ====================
+
+  /**
+   * 从 Config.PRESET_CONFIGS 构造完整设置对象
+   * 纯数据方法，不依赖任何 DOM 元素
+   * @param {number} func - 功能（1-4）
+   * @param {string} phase - 阶段（pre/train/post）
+   * @returns {Object} 完整的设置对象
+   */
+  function getPresetSettings(func, phase) {
+    // 边界：Config 未加载时使用硬编码回退
+    if (typeof Config === 'undefined' || !Config.PRESET_CONFIGS) {
+      console.warn('[AdminSettings] Config 未加载，使用硬编码回退');
+      const reps = (phase === 'train') ? 5 : 3;
+      return {
+        func: func,
+        phase: phase,
+        snrLevels: [9, 6, 3, 0, -3, -6, -9],
+        blurLevels: func === 2 ? [0, 4, 8, 12, 16, 20] : [0],
+        soaLevels: func === 3 ? [-300, -200, -100, 0, 100, 200, 300] : [0],
+        attLevels: func === 4 ? ['single', 'dual'] : ['single'],
+        repetitions: reps,
+        snrMode: 'adaptive',
+        order: 'random',
+        orderState: { snr: 'random', blur: 'random', soa: 'random', att: 'random' }
+      };
+    }
+
+    const preset = Config.PRESET_CONFIGS[func];
+    const config = (preset && preset[phase]) || (preset && preset['train']) || {};
+
     return {
       func: func,
       phase: phase,
-      snrLevels: [9, 6, 3, 0, -3, -6, -9],
-      blurLevels: [0, 4, 8, 12, 16, 20],
-      soaLevels: [-300, -200, -100, 0, 100, 200, 300],
-      attLevels: ['single', 'dual'],
-      repetitions: reps,
-      snrMode: 'adaptive',
-      orderState: { snr: 'seq', blur: 'seq', soa: 'seq', att: 'seq' }
+      snrLevels: config.snrLevels || Config.SNR_DEFAULT.slice(),
+      blurLevels: config.blurLevels || (func === 2 ? Config.BLUR_DEFAULT.slice() : [0]),
+      soaLevels: config.soaLevels || (func === 3 ? Config.SOA_DEFAULT.slice() : [0]),
+      attLevels: config.attLevels || (func === 4 ? ['single', 'dual'] : ['single']),
+      repetitions: config.repetitions || (phase === 'train' ? 5 : Config.DEFAULT_REPETITIONS),
+      snrMode: config.snrMode || 'adaptive',
+      order: 'random',
+      orderState: { snr: 'random', blur: 'random', soa: 'random', att: 'random' }
     };
+  }
+
+  // ==================== 默认设置 ====================
+
+  function getDefaultSettings(func, phase) {
+    return getPresetSettings(func, phase);
   }
 
   // ==================== UI 应用 ====================
@@ -415,9 +477,11 @@ const AdminSettings = (function () {
     saveSettings:         saveSettings,
     getAllSettings:       getAllSettings,
     getSettingsBySubject: getSettingsBySubject,
+    getLatestSubject:    getLatestSubject,
     deleteSettings:       deleteSettings,
     clearAllSettings:     clearAllSettings,
     getDefaultSettings:   getDefaultSettings,
+    getPresetSettings:    getPresetSettings,
     applySettingsToUI:   applySettingsToUI,
     loadSettingsFromFile: loadSettingsFromFile,
     applyDefaultSettings: applyDefaultSettings,

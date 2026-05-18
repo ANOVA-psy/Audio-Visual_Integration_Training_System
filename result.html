@@ -5,10 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>结果分析 - 视听语音整合训练系统</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
   <link rel="stylesheet" href="css/style.css">
   <style>
     body { font-size: 17px; }
-    .screen { display:block; }
+    /* 给图表容器一个明确高度，避免被无内容时撑开 */
+    .chart-box { width: 100%; height: 420px; }
   </style>
 </head>
 <body class="bg-slate-100 min-h-screen">
@@ -24,7 +26,7 @@
     </div>
 
     <!-- 结果摘要 -->
-    <div id="resultSummary" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+    <div id="resultSummary" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
       <div class="bg-blue-50 p-4 rounded-xl text-center">
         <div class="text-sm text-gray-500">被试编号</div>
         <div id="resSubject" class="text-xl font-bold text-blue-600">--</div>
@@ -44,49 +46,52 @@
     </div>
 
     <!-- 子标题 -->
-    <div id="resSubtitle" class="text-center text-gray-500 mb-6"></div>
+    <div id="resSubtitle" class="text-center text-gray-500 mb-4"></div>
+
+    <!-- AVIS 综合认知指数 -->
+    <div id="avisCard" class="mb-6 p-5 rounded-2xl bg-gradient-to-br from-purple-50 via-white to-blue-50 border-2 border-purple-200 hidden">
+      <div class="flex items-center justify-between mb-3">
+        <div>
+          <div class="text-sm text-gray-500">综合认知指数 (AVIS)</div>
+          <div class="text-xs text-gray-400">融合 4 个维度的整体认知能力评分</div>
+        </div>
+        <div class="text-right">
+          <div id="avisTotal" class="text-4xl font-extrabold text-purple-600">--</div>
+          <div class="text-xs text-gray-400">满分 100</div>
+        </div>
+      </div>
+      <div class="grid grid-cols-4 gap-2 text-center text-xs">
+        <div class="p-2 bg-blue-50 rounded-lg">
+          <div class="text-gray-500">听觉基底 (30%)</div>
+          <div id="avisAud" class="font-bold text-blue-600 text-lg">--</div>
+        </div>
+        <div class="p-2 bg-purple-50 rounded-lg">
+          <div class="text-gray-500">视觉代偿 (30%)</div>
+          <div id="avisVis" class="font-bold text-purple-600 text-lg">--</div>
+        </div>
+        <div class="p-2 bg-orange-50 rounded-lg">
+          <div class="text-gray-500">时空整合 (20%)</div>
+          <div id="avisInt" class="font-bold text-orange-600 text-lg">--</div>
+        </div>
+        <div class="p-2 bg-red-50 rounded-lg">
+          <div class="text-gray-500">注意抑制 (20%)</div>
+          <div id="avisAtt" class="font-bold text-red-600 text-lg">--</div>
+        </div>
+      </div>
+    </div>
 
     <!-- 鼓励语 -->
-    <div id="encourageMsg" class="mb-8 p-4 bg-blue-50 rounded-xl text-center">
+    <div id="encourageMsg" class="mb-6 p-4 bg-blue-50 rounded-xl text-center">
       <div class="text-lg"></div>
     </div>
 
-    <!-- 阈值结果 -->
-    <div id="thresholdContainer" class="mb-8 p-6 bg-gray-50 rounded-xl hidden">
-      <h3 class="text-lg font-bold mb-4">📈 阈值估计结果</h3>
-      <div id="thresholdResult" class="text-lg"></div>
-      <canvas id="psychChart" class="w-full max-w-2xl mx-auto mt-4" height="300"></canvas>
+    <!-- 阈值文字结果 -->
+    <div id="thresholdInfo" class="mb-6 p-5 bg-gray-50 rounded-xl hidden">
+      <div id="thresholdResultText" class="text-lg"></div>
     </div>
 
-  <!-- 图表区域：所有图表宽度一致，自适应 -->
-  <div class="space-y-6 mb-8">
-    <div id="trendChartContainer" class="bg-gray-50 p-4 rounded-xl hidden">
-      <h3 class="text-lg font-bold mb-4">📈 正确率趋势</h3>
-      <div class="w-full" style="position:relative; height:280px;">
-        <canvas id="trendChart"></canvas>
-      </div>
-    </div>
-    <div id="heatmapContainer" class="bg-gray-50 p-4 rounded-xl hidden">
-      <h3 class="text-lg font-bold mb-4">🔥 正确率热力图</h3>
-      <div class="w-full" style="position:relative; height:320px;">
-        <canvas id="heatmapChart"></canvas>
-      </div>
-    </div>
-    <div id="areaChartContainer" class="bg-gray-50 p-4 rounded-xl hidden">
-      <h3 class="text-lg font-bold mb-4">📊 单/双说话人正确率</h3>
-      <div class="w-full" style="position:relative; height:280px;">
-        <canvas id="areaChart"></canvas>
-      </div>
-    </div>
-    <!-- 心理测量函数图 -->
-    <div id="thresholdContainer" class="mb-8 p-6 bg-gray-50 rounded-xl hidden">
-      <h3 class="text-lg font-bold mb-4">📈 阈值估计结果</h3>
-      <div id="thresholdResult" class="text-lg mb-4"></div>
-      <div class="w-full" style="position:relative; height:320px;">
-        <canvas id="psychChart"></canvas>
-      </div>
-    </div>
-  </div>
+    <!-- 主图表区（单画布，按功能切换） -->
+    <div id="mainChartBox" class="bg-white border border-gray-200 rounded-xl p-3 mb-8 chart-box"></div>
 
     <!-- 试次明细表格 -->
     <div class="mb-8">
@@ -116,79 +121,43 @@
 <script src="js/audioProcessor.js"></script>
 <script src="js/psychometric.js"></script>
 <script src="js/dataManager.js"></script>
-<script src="js/charts.js"></script>
+<script src="js/adaptiveEngine.js"></script>
 <script src="modules/module1.js"></script>
 <script src="modules/module2.js"></script>
 <script src="modules/module3.js"></script>
 <script src="modules/module4.js"></script>
-<script src="js/app.js"></script>
+<script src="js/resultCharts.js"></script>
 
 <script>
-  // ==================== 图表自适应 ====================
-  let chartResizeObserver = null;
-
-  function setupChartResponsive() {
-    // 使用 ResizeObserver 监听容器大小变化
-    if (typeof ResizeObserver !== 'undefined') {
-      chartResizeObserver = new ResizeObserver(() => {
-        // 延迟执行，避免频繁重绘
-        clearTimeout(setupChartResponsive._timer);
-        setupChartResponsive._timer = setTimeout(() => {
-          redrawAllCharts();
-        }, 200);
-      });
-
-      // 观察所有图表容器
-      ['trendChart', 'heatmapChart', 'areaChart', 'psychChart'].forEach(id => {
-        const canvas = document.getElementById(id);
-        if (canvas && canvas.parentElement) {
-          chartResizeObserver.observe(canvas.parentElement);
-        }
-      });
-    }
-
-    // 初始绘制
-    setTimeout(() => redrawAllCharts(), 100);
-  }
-
-  let _lastChartData = null; // 保存图表数据用于重绘
-
-  function redrawAllCharts() {
-    if (!_lastChartData) return;
-    const { results, func, data } = _lastChartData;
-    // 重新准备 canvas 尺寸
-    ['trendChart', 'heatmapChart', 'areaChart', 'psychChart'].forEach(id => {
-      prepareCanvas(id);
-    });
-    renderCharts(results, func, data);
-  }
-
   // ==================== 页面初始化 ====================
+  let _mainChart = null;
+
   window.addEventListener('DOMContentLoaded', () => {
     const urlParams = new URLSearchParams(window.location.search);
     const viewResultId = urlParams.get('id');
 
     if (!viewResultId) {
-      document.body.innerHTML = '<div class="text-center py-20 text-gray-400">未指定记录ID</div>';
+      document.getElementById('mainChartBox').innerHTML = '<div class="text-center py-20 text-gray-400">未指定记录ID</div>';
       return;
     }
 
     if (typeof DataManager === 'undefined') {
-      document.body.innerHTML = '<div class="text-center py-20 text-gray-400">系统加载失败</div>';
+      document.getElementById('mainChartBox').innerHTML = '<div class="text-center py-20 text-gray-400">系统加载失败</div>';
       return;
     }
 
     const data = DataManager.loadResultFromHistory(viewResultId);
     if (!data) {
-      document.body.innerHTML = '<div class="text-center py-20 text-gray-400">未找到记录：' + viewResultId + '</div>';
+      document.getElementById('mainChartBox').innerHTML = '<div class="text-center py-20 text-gray-400">未找到记录：' + viewResultId + '</div>';
       return;
     }
 
-    // 渲染结果
     renderResultFromHistory(data);
 
-    // 设置图表自适应
-    setupChartResponsive();
+    // 窗口大小变化时重新调整图表
+    window.addEventListener('resize', () => {
+      if (_mainChart) _mainChart.resize();
+    });
   });
 
   // ==================== 渲染历史结果 ====================
@@ -209,24 +178,16 @@
     // 更新摘要
     const corr = results.filter(r => r.correct).length;
     const accuracy = Math.round(corr / n * 100);
-
-    const rAcc = document.getElementById('rAcc');
-    if (rAcc) rAcc.textContent = accuracy + '%';
-
-    const rTotal = document.getElementById('rTotal');
-    if (rTotal) rTotal.textContent = n;
-
-    const rSubject = document.getElementById('resSubject');
-    if (rSubject) rSubject.textContent = metadata.subjectId || '--';
+    document.getElementById('rAcc').textContent = accuracy + '%';
+    document.getElementById('rTotal').textContent = n;
+    document.getElementById('resSubject').textContent = metadata.subjectId || '--';
 
     const validRTs = results.filter(r => r.rt < 10000).map(r => r.rt);
     const avgRT = validRTs.length > 0 ? Math.round(validRTs.reduce((a,b)=>a+b,0)/validRTs.length) : 0;
-    const rRT = document.getElementById('rRT');
-    if (rRT) rRT.textContent = avgRT + 'ms';
+    document.getElementById('rRT').textContent = avgRT + 'ms';
 
-    // 子标题
-    const resSubtitle = document.getElementById('resSubtitle');
-    if (resSubtitle) resSubtitle.textContent = `${funcNames[metadata.func] || '未知功能'} · ${phaseNames[metadata.phase] || metadata.phase}`;
+    document.getElementById('resSubtitle').textContent =
+      `${funcNames[metadata.func] || '未知功能'} · ${phaseNames[metadata.phase] || metadata.phase}`;
 
     // 鼓励语
     const msg = document.getElementById('encourageMsg');
@@ -239,14 +200,70 @@
       msg.querySelector('div').textContent = phaseMsg[metadata.phase] || '本次训练已完成，请告知工作人员。';
     }
 
+    // 阈值文字结果
+    renderThresholdText(data);
+
+    // AVIS 综合认知指数（聚合该被试所有 active 评估）
+    renderAVISCard(metadata.subjectId, metadata.func, data.psychometricFit);
+
     // 渲染表格
     renderResultsTable(results, metadata.func);
 
-    // 渲染阈值
-    renderThreshold(data);
+    // ECharts 主图（按功能分支）
+    _mainChart = ResultCharts.render('mainChartBox', metadata.func, data);
+  }
 
-    // 渲染图表
-    renderCharts(results, metadata.func, data);
+  function renderAVISCard(subjectId, currentFunc, currentFit) {
+    const card = document.getElementById('avisCard');
+    if (!card || typeof AdaptiveEngine === 'undefined') return;
+
+    // 聚合该被试历史 active 评估，再用当前最新评估覆盖对应 func
+    const evalResults = AdaptiveEngine.collectLatestEval(subjectId);
+    if (currentFit) evalResults['func' + currentFunc] = currentFit;
+
+    // 至少要有一项才显示
+    const hasAny = ['func1','func2','func3','func4'].some(k => evalResults[k]);
+    if (!hasAny) { card.classList.add('hidden'); return; }
+
+    const avis = AdaptiveEngine.calculateCognitiveScore(evalResults);
+    card.classList.remove('hidden');
+    document.getElementById('avisTotal').textContent = avis.total;
+    document.getElementById('avisAud').textContent   = avis.auditory;
+    document.getElementById('avisVis').textContent   = avis.visual;
+    document.getElementById('avisInt').textContent   = avis.integration;
+    document.getElementById('avisAtt').textContent   = avis.attention;
+  }
+
+  function renderThresholdText(data) {
+    const box  = document.getElementById('thresholdInfo');
+    const txt  = document.getElementById('thresholdResultText');
+    if (!box || !txt) return;
+    const metadata = data.metadata;
+    const fit = data.psychometricFit;
+
+    const lines = [];
+    if (metadata.func === 1 && metadata.threshold != null) {
+      lines.push(`<div>噪音阈值（SNR @ 75%）：<strong class="text-xl text-blue-600">${(+metadata.threshold).toFixed(1)} dB</strong>` +
+                 (fit && fit.r2 != null ? ` <span class="text-sm text-gray-500 ml-2">R² = ${(+fit.r2).toFixed(2)}</span>` : '') + `</div>`);
+    } else if (metadata.func === 2 && fit && fit.gain != null) {
+      lines.push(`<div>视觉增益（Visual Gain）：<strong class="text-xl text-purple-600">${(+fit.gain).toFixed(1)} dB</strong></div>`);
+      if (fit.fitClear) lines.push(`<div>清晰阈值：<strong>${(+fit.fitClear.threshold).toFixed(1)} dB</strong></div>`);
+      if (fit.fitBlur)  lines.push(`<div>模糊阈值：<strong>${(+fit.fitBlur.threshold).toFixed(1)} dB</strong></div>`);
+    } else if (metadata.func === 3 && fit && fit.window != null) {
+      lines.push(`<div>整合时窗宽度：<strong class="text-xl text-orange-600">${(+fit.window).toFixed(0)} ms</strong></div>`);
+      lines.push(`<div class="text-sm text-gray-500">视觉领先：${(+fit.visualLeadWindow).toFixed(0)} ms · 听觉领先：${(+fit.audioLeadWindow).toFixed(0)} ms</div>`);
+    } else if (metadata.func === 4 && fit && fit.cost != null) {
+      lines.push(`<div>双任务干扰抑制成本：<strong class="text-xl text-red-600">+${(+fit.cost).toFixed(1)} dB</strong></div>`);
+      if (fit.singleThreshold != null) lines.push(`<div>单任务阈值：<strong>${(+fit.singleThreshold).toFixed(1)} dB</strong></div>`);
+      if (fit.dualThreshold != null)   lines.push(`<div>双任务阈值：<strong>${(+fit.dualThreshold).toFixed(1)} dB</strong></div>`);
+    }
+
+    if (lines.length > 0) {
+      box.classList.remove('hidden');
+      txt.innerHTML = lines.join('');
+    } else {
+      box.classList.add('hidden');
+    }
   }
 
   function renderResultsTable(results, func) {
@@ -254,7 +271,6 @@
     const tbody = document.getElementById('resTableBody');
     if (!tbody) return;
 
-    // 表头
     if (thead) {
       let headHTML = '<tr>';
       headHTML += '<th class="p-2 text-left">#</th>';
@@ -269,7 +285,6 @@
       thead.innerHTML = headHTML;
     }
 
-    // 表格内容
     let html = '';
     results.forEach((r, i) => {
       const choiceLabels = ['A','B','C','D'];
@@ -279,7 +294,7 @@
       if (func === 2 || func === 3) html += `<td class="p-2">${r.blur}%</td>`;
       if (func === 3) html += `<td class="p-2">${r.soa} ms</td>`;
       if (func === 4) html += `<td class="p-2">${r.attention === 'single' ? '单' : '双'}</td>`;
-      html += `<td class="p-2">${choiceLabels[r.choice] || '--'}</td>`;
+      html += `<td class="p-2">${typeof r.choice === 'number' ? (choiceLabels[r.choice] || '--') : (r.choice || '--')}</td>`;
       html += `<td class="p-2 ${r.correct ? 'text-green-600' : 'text-red-600'}">${r.correct ? '✓' : '✗'}</td>`;
       html += `<td class="p-2">${r.rt < 10000 ? r.rt + 'ms' : '--'}</td>`;
       html += '</tr>';
@@ -287,207 +302,8 @@
     tbody.innerHTML = html;
   }
 
-  function renderThreshold(data) {
-    const container = document.getElementById('thresholdContainer');
-    const result = document.getElementById('thresholdResult');
-    if (!container || !result) return;
-
-    const metadata = data.metadata;
-    if (!metadata.threshold && !data.psychometricFit) {
-      container.classList.add('hidden');
-      return;
-    }
-
-    container.classList.remove('hidden');
-
-    const funcNames = { 1: '阈值 SNR', 2: '视觉增益', 3: '整合窗口', 4: '干扰抑制成本' };
-    const unit = { 1: 'dB', 2: '%', 3: 'ms', 4: 'dB' };
-
-    let html = '';
-    if (metadata.threshold !== null && metadata.threshold !== undefined) {
-      html += `<div class="mb-2">${funcNames[metadata.func] || '阈值'}：<strong class="text-xl text-blue-600">${metadata.threshold}${unit[metadata.func] || ''}</strong></div>`;
-    }
-    if (metadata.accuracy) {
-      html += `<div>正确率：<strong>${metadata.accuracy}%</strong></div>`;
-    }
-    result.innerHTML = html;
-
-    // 绘制心理测量函数图
-    const canvas = document.getElementById('psychChart');
-    if (canvas && data.psychometricFit && typeof Charts !== 'undefined') {
-      try {
-        if (metadata.func === 1 && data.psychometricFit.fit) {
-          Charts.drawPsychometric(canvas, data.psychometricFit.fit, data.psychometricFit.data, {
-            title: '功能一：噪音阈值拟合图',
-            xLabel: 'SNR (dB)',
-            yLabel: '正确率',
-            thresholdLine: 0.75, // Y=0.75 阈值线
-            lineColor: '#6366f1'
-          });
-        } else if (metadata.func === 2 && data.psychometricFit.fitClear && data.psychometricFit.fitBlur) {
-          Charts.drawDualPsychometric(canvas, data.psychometricFit.fitClear, data.psychometricFit.fitBlur, {
-            label1: '清晰语音', label2: '模糊语音',
-            title: '功能二：模糊度/视觉增益对比图'
-          });
-        } else if (metadata.func === 3 && data.psychometricFit.fit) {
-          Charts.drawIntegrationWindow(canvas, data.psychometricFit.fit, {
-            title: '功能三：SOA 多感官整合时窗',
-            lowerSOA: data.psychometricFit.lowerSOA,
-            upperSOA: data.psychometricFit.upperSOA,
-            window: data.psychometricFit.window
-          });
-        } else if (metadata.func === 4 && data.psychometricFit.fitSingle && data.psychometricFit.fitDual) {
-          Charts.drawInterferenceCost(canvas, data.psychometricFit.fitSingle, data.psychometricFit.fitDual, {
-            cost: data.psychometricFit.cost,
-            title: '功能四：双人注意干扰抑制成本'
-          });
-        }
-        container.style.display = 'block';
-      } catch(e) {
-        console.warn('[Result] 心理测量图绘制失败:', e);
-      }
-    }
-  }
-
-  function prepareCanvas(id) {
-    const canvas = document.getElementById(id);
-    if (!canvas) return null;
-    const parent = canvas.parentElement;
-    if (!parent) return canvas;
-    const rect = parent.getBoundingClientRect();
-    const W = Math.floor(rect.width) || 600;
-    const H = Math.floor(rect.height) || 280;
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = W * dpr;
-    canvas.height = H * dpr;
-    canvas.style.width = W + 'px';
-    canvas.style.height = H + 'px';
-    return canvas;
-  }
-
-  function renderCharts(results, func, data) {
-    if (typeof Charts === 'undefined') return;
-
-    // 保存数据用于重绘
-    _lastChartData = { results, func, data };
-
-    // 准备 canvas 尺寸
-    prepareCanvas('trendChart');
-    prepareCanvas('heatmapChart');
-    prepareCanvas('areaChart');
-    prepareCanvas('psychChart');
-
-    // 趋势图
-    const trendCanvas = document.getElementById('trendChart');
-    const trendContainer = document.getElementById('trendChartContainer');
-    if (trendCanvas && trendContainer && results.length > 5) {
-      try {
-        const windowSize = Math.max(5, Math.floor(results.length / 10));
-        const points = [];
-        for (let i = windowSize; i <= results.length; i++) {
-          const slice = results.slice(i - windowSize, i);
-          const acc = slice.filter(r => r.correct).length / slice.length;
-          points.push({ x: i, y: acc });
-        }
-        Charts.drawTrendLine(trendCanvas, points, {
-          title: '正确率趋势（滑动窗口）',
-          xLabel: '试次',
-          yLabel: '正确率'
-        });
-        trendContainer.classList.remove('hidden');
-      } catch(e) {
-        console.warn('[Result] 趋势图绘制失败:', e);
-      }
-    }
-
-    // 热力图
-    const heatmapCanvas = document.getElementById('heatmapChart');
-    const heatmapContainer = document.getElementById('heatmapContainer');
-    if (heatmapCanvas && heatmapContainer && (func === 2 || func === 3)) {
-      try {
-        if (func === 2) {
-          const snrLevels = [...new Set(results.map(r => r.snr))].sort((a,b) => a-b);
-          const blurLevels = [...new Set(results.map(r => r.blur))].sort((a,b) => a-b);
-          if (snrLevels.length > 0 && blurLevels.length > 0) {
-            const matrix = blurLevels.map(blur =>
-              snrLevels.map(snr => {
-                const hits = results.filter(r => r.snr === snr && r.blur === blur);
-                return hits.length > 0 ? hits.filter(r => r.correct).length / hits.length : 0;
-              })
-            );
-            Charts.drawHeatmap(heatmapCanvas, {
-              matrix: matrix,
-              xLabels: snrLevels.map(s => s + 'dB'),
-              yLabels: blurLevels.map(b => b + '%')
-            }, {
-              title: '功能二：SNR × 模糊度 正确率热力图',
-              xLabel: 'SNR (dB)',
-              yLabel: '模糊度 (%)'
-            });
-            heatmapContainer.classList.remove('hidden');
-          }
-        } else if (func === 3) {
-          const snrLevels = [...new Set(results.map(r => r.snr))].sort((a,b) => a-b);
-          const soaLevels = [...new Set(results.map(r => r.soa))].sort((a,b) => a-b);
-          if (snrLevels.length > 0 && soaLevels.length > 0) {
-            const matrix = soaLevels.map(soa =>
-              snrLevels.map(snr => {
-                const hits = results.filter(r => r.snr === snr && r.soa === soa);
-                return hits.length > 0 ? hits.filter(r => r.correct).length / hits.length : 0;
-              })
-            );
-            Charts.drawHeatmap(heatmapCanvas, {
-              matrix: matrix,
-              xLabels: snrLevels.map(s => s + 'dB'),
-              yLabels: soaLevels.map(s => s + 'ms')
-            }, {
-              title: '功能三：SNR × SOA 正确率热力图',
-              xLabel: 'SNR (dB)',
-              yLabel: 'SOA (ms)'
-            });
-            heatmapContainer.classList.remove('hidden');
-          }
-        }
-      } catch(e) {
-        console.warn('[Result] 热力图绘制失败:', e);
-      }
-    }
-
-    // 面积图（功能四）
-    const areaCanvas = document.getElementById('areaChart');
-    const areaContainer = document.getElementById('areaChartContainer');
-    if (areaCanvas && areaContainer && func === 4) {
-      try {
-        const snrLevels = [...new Set(results.map(r => r.snr))].sort((a,b) => a-b);
-        const singleData = { x: [], y: [] };
-        const dualData = { x: [], y: [] };
-        snrLevels.forEach(snr => {
-          const singleHits = results.filter(r => r.snr === snr && r.attention === 'single');
-          const dualHits = results.filter(r => r.snr === snr && r.attention === 'dual');
-          singleData.x.push(snr);
-          singleData.y.push(singleHits.length > 0 ? singleHits.filter(r => r.correct).length / singleHits.length : 0);
-          dualData.x.push(snr);
-          dualData.y.push(dualHits.length > 0 ? dualHits.filter(r => r.correct).length / dualHits.length : 0);
-        });
-        Charts.drawAreaChart(areaCanvas, { single: singleData, dual: dualData }, {
-          label1: '单说话人', label2: '双说话人',
-          title: '功能四：单/双说话人正确率对比'
-        });
-        areaContainer.classList.remove('hidden');
-      } catch(e) {
-        console.warn('[Result] 面积图绘制失败:', e);
-      }
-    }
-  }
-
-  // ==================== 工具函数 ====================
-  function goBack() {
-    window.location.href = 'history.html';
-  }
-
-  function printResult() {
-    window.print();
-  }
+  function goBack()   { window.location.href = 'history.html'; }
+  function printResult() { window.print(); }
 </script>
 
 </body>

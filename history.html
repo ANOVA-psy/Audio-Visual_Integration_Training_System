@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>历史记录 - 视听语音整合训练系统</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
   <script>
     tailwind.config = {
       theme: {
@@ -83,6 +84,7 @@
 <script src="js/audioProcessor.js"></script>
 <script src="js/psychometric.js"></script>
 <script src="js/dataManager.js"></script>
+<script src="js/adaptiveEngine.js"></script>
 <script src="modules/module1.js"></script>
 <script src="modules/module2.js"></script>
 <script src="modules/module3.js"></script>
@@ -134,9 +136,134 @@
       const hc = document.getElementById('historyContent');
       if (hc && typeof DataManager !== 'undefined') {
         hc.innerHTML = DataManager.generateHistoryHTML();
+        renderAllHistoryCharts();
       }
       updateStorageInfo();
     }, 300);
+  });
+
+  // ==================== 历史成绩折线图（每被试一张） ====================
+  // 暴露给 dataManager 在 status 切换后重绘
+  window._historyChartInstances = {};
+
+  window.renderAllHistoryCharts = function () {
+    if (typeof DataManager === 'undefined' || typeof echarts === 'undefined') return;
+    const allData = DataManager.getAllData();
+
+    // 按被试分组
+    const grouped = {};
+    allData.forEach(d => {
+      const sid = d.metadata.subjectId;
+      if (!grouped[sid]) grouped[sid] = [];
+      grouped[sid].push(d);
+    });
+
+    Object.keys(grouped).forEach(sid => {
+      renderSubjectHistoryChart(sid, grouped[sid]);
+    });
+  };
+
+  function renderSubjectHistoryChart(subjectId, records) {
+    const dom = document.getElementById('historyChart_' + subjectId);
+    if (!dom) return;
+
+    // 销毁旧实例
+    if (window._historyChartInstances[subjectId]) {
+      window._historyChartInstances[subjectId].dispose();
+    }
+    const chart = echarts.init(dom);
+    window._historyChartInstances[subjectId] = chart;
+
+    // 只取 active 的记录（被标记 overwritten 的不显示）
+    const visibleRecords = records.filter(d => d.status === 'active' || !d.status);
+
+    // 按功能分组
+    const funcColors = { 1: '#3b82f6', 2: '#a855f7', 3: '#f59e0b', 4: '#ef4444' };
+    const funcNames  = { 1: '功能一（抗干扰）', 2: '功能二（视觉整合）', 3: '功能三（异步校准）', 4: '功能四（注意定位）' };
+    const funcUnits  = { 1: 'dB', 2: 'dB', 3: 'ms', 4: 'dB' };
+
+    const seriesData = {};
+    [1, 2, 3, 4].forEach(f => { seriesData[f] = []; });
+
+    visibleRecords
+      .filter(d => d.metadata && d.metadata.threshold != null && typeof d.metadata.threshold === 'number')
+      .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
+      .forEach(d => {
+        const f = d.metadata.func;
+        if (!seriesData[f]) seriesData[f] = [];
+        seriesData[f].push({
+          value: [d.timestamp, +d.metadata.threshold.toFixed(2)],
+          attempt: d.attemptNumber || 1,
+          phase: d.metadata.phase
+        });
+      });
+
+    const seriesList = [];
+    [1, 2, 3, 4].forEach(f => {
+      if (seriesData[f].length > 0) {
+        seriesList.push({
+          name: funcNames[f],
+          type: 'line',
+          data: seriesData[f],
+          smooth: true,
+          symbol: 'circle',
+          symbolSize: 8,
+          lineStyle: { color: funcColors[f], width: 2 },
+          itemStyle: { color: funcColors[f] }
+        });
+      }
+    });
+
+    if (seriesList.length === 0) {
+      chart.setOption({
+        title: {
+          text: '暂无可显示的成绩数据',
+          left: 'center', top: 'middle',
+          textStyle: { color: '#9ca3af', fontSize: 14, fontWeight: 'normal' }
+        }
+      });
+      return;
+    }
+
+    chart.setOption({
+      tooltip: {
+        trigger: 'axis',
+        formatter: (params) => {
+          const lines = [params[0].axisValueLabel];
+          params.forEach(p => {
+            const funcIdx = ['功能一（抗干扰）','功能二（视觉整合）','功能三（异步校准）','功能四（注意定位）'].indexOf(p.seriesName) + 1;
+            const unit = funcUnits[funcIdx] || '';
+            const extra = p.data.attempt != null ? ` (#${p.data.attempt})` : '';
+            lines.push(`${p.marker} ${p.seriesName}：<b>${p.value[1]} ${unit}</b>${extra}`);
+          });
+          return lines.join('<br/>');
+        }
+      },
+      legend: { top: 4, type: 'scroll' },
+      grid: { left: 50, right: 20, top: 40, bottom: 40 },
+      xAxis: {
+        type: 'time',
+        axisLabel: { fontSize: 11 }
+      },
+      yAxis: {
+        type: 'value',
+        name: '阈值 / 指标',
+        nameTextStyle: { fontSize: 11 },
+        axisLabel: { fontSize: 11 }
+      },
+      series: seriesList
+    });
+
+    // 监听容器尺寸（折叠展开时）
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(() => chart.resize());
+      ro.observe(dom);
+    }
+  }
+
+  // 全局窗口变化时重绘
+  window.addEventListener('resize', () => {
+    Object.values(window._historyChartInstances || {}).forEach(c => c && c.resize());
   });
 </script>
 

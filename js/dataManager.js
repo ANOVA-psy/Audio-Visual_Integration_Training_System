@@ -212,7 +212,7 @@ const DataManager = (function () {
       const quickInfo = (genderText || ageText) ? ` (${[genderText, ageText ? ageText + '岁' : ''].filter(Boolean).join(', ')})` : '';
 
       html += `
-        <div class="mb-4 border rounded-xl bg-white shadow-sm">
+        <div class="mb-4 border rounded-xl bg-white shadow-sm" data-subject="${subjectId}">
           <!-- 被试头部（可点击折叠） -->
           <div class="flex items-center justify-between p-4 bg-gray-50 rounded-t-xl cursor-pointer select-none"
                onclick="DataManager.toggleCollapse('${subjectId}')">
@@ -230,18 +230,27 @@ const DataManager = (function () {
 
           <!-- 该被试的记录表格（可折叠） -->
           <div id="${recordsDivId}" class="p-4">
+            <!-- 历史成绩折线图（每功能一条线） -->
+            <div class="mb-4">
+              <div class="text-sm font-semibold text-gray-600 mb-2">📈 历史成绩趋势（按时间）</div>
+              <div id="historyChart_${subjectId}" style="width:100%;height:280px;" class="border border-gray-100 rounded-lg bg-gray-50"></div>
+              <div class="text-xs text-gray-400 mt-1">说明：勾选"显示"列可控制该记录是否参与折线图绘制；取消勾选会标记为"已覆盖"</div>
+            </div>
+
             <table class="w-full text-sm">
               <thead class="bg-gray-100">
                 <tr>
                   <th class="p-2 text-left"><input type="checkbox" id="cb_head_${subjectId}"
                          onchange="DataManager.onHeadCheckboxChange('${subjectId}')"
                          class="w-4 h-4 cursor-pointer"></th>
+                  <th class="p-2 text-left">显示</th>
                   <th class="p-2 text-left">Attempt</th>
                   <th class="p-2 text-left">日期</th>
                   <th class="p-2 text-left">阶段</th>
                   <th class="p-2 text-left">功能</th>
                   <th class="p-2 text-left">试次数</th>
                   <th class="p-2 text-left">正确率</th>
+                  <th class="p-2 text-left">阈值</th>
                   <th class="p-2 text-left">状态</th>
                   <th class="p-2 text-left">操作</th>
                 </tr>
@@ -255,8 +264,13 @@ const DataManager = (function () {
         const cbId = `cb_record_${d.id}`;
         const isActive = d.status === 'active' || !d.status;
         const statusBadge = isActive
-          ? '<span class="px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs">当前</span>'
+          ? '<span class="px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs">显示中</span>'
           : '<span class="px-2 py-0.5 bg-gray-100 text-gray-500 rounded text-xs">已覆盖</span>';
+
+        // 阈值列：从 metadata.threshold 提取
+        const thrVal = (d.metadata && d.metadata.threshold != null)
+          ? (typeof d.metadata.threshold === 'number' ? d.metadata.threshold.toFixed(2) : d.metadata.threshold)
+          : '--';
 
         html += `
           <tr class="border-t hover:bg-gray-50">
@@ -265,18 +279,23 @@ const DataManager = (function () {
                      onchange="DataManager.onRecordCheckboxChange('${subjectId}')"
                      class="w-4 h-4 cursor-pointer record-cb">
             </td>
+            <td class="p-2">
+              <input type="checkbox" ${isActive ? 'checked' : ''}
+                     onchange="DataManager.toggleRecordVisibility('${d.id}')"
+                     title="勾选则在折线图中显示，取消则标记为已覆盖"
+                     class="w-4 h-4 cursor-pointer">
+            </td>
             <td class="p-2 font-mono">#${d.attemptNumber || 1}</td>
             <td class="p-2">${d.metadata.date}</td>
             <td class="p-2">${phaseNames[d.metadata.phase] || d.metadata.phase}</td>
             <td class="p-2">${funcNames[d.metadata.func] || d.metadata.func}</td>
             <td class="p-2">${d.metadata.totalTrials}</td>
             <td class="p-2">${d.metadata.accuracy}%</td>
+            <td class="p-2 font-mono text-xs">${thrVal}</td>
             <td class="p-2">${statusBadge}</td>
             <td class="p-2">
               <button onclick="DataManager.viewDetail('${d.id}')"
                       class="text-blue-500 hover:underline mr-2 text-xs">查看</button>
-              ${!isActive ? `<button onclick="DataManager.restoreAsCurrent('${d.id}')"
-                      class="text-orange-500 hover:underline mr-2 text-xs">恢复为当前</button>` : ''}
               <button onclick="DataManager.deleteDataConfirm('${d.id}')"
                       class="text-red-500 hover:underline text-xs">删除</button>
             </td>
@@ -597,8 +616,45 @@ const DataManager = (function () {
 
         const hc = document.getElementById('historyContent');
         if (hc) hc.innerHTML = generateHistoryHTML();
+        if (typeof window.renderAllHistoryCharts === 'function') window.renderAllHistoryCharts();
       });
     }
+  }
+
+  /**
+   * 切换某条记录在历史折线图中的可见性
+   * 通过翻转 status (active ↔ overwritten) 实现：
+   *   - active     → 显示在折线图中
+   *   - overwritten → 从折线图中隐藏
+   * 不弹确认框，直接切换并重绘
+   * @param {string} recordId
+   */
+  function toggleRecordVisibility(recordId) {
+    const allData = getAllData();
+    const target = allData.find(d => d.id === recordId);
+    if (!target) return;
+
+    if (target.status === 'overwritten') {
+      // 想恢复显示：把同组所有 active 标记为 overwritten，再把自己设为 active
+      allData.forEach(d => {
+        if (d.groupKey === target.groupKey && (d.status === 'active' || !d.status)) {
+          d.status = 'overwritten';
+          d.overwrittenBy = recordId;
+        }
+      });
+      target.status = 'active';
+      target.overwrittenBy = null;
+    } else {
+      // 当前是 active → 标记为 overwritten 隐藏
+      target.status = 'overwritten';
+      target.overwrittenBy = null;
+    }
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(allData));
+
+    const hc = document.getElementById('historyContent');
+    if (hc) hc.innerHTML = generateHistoryHTML();
+    if (typeof window.renderAllHistoryCharts === 'function') window.renderAllHistoryCharts();
   }
 
   /* ==================================================================
@@ -857,6 +913,7 @@ const DataManager = (function () {
     setUploadURL,
     getUploadURL,
     restoreAsCurrent,
+    toggleRecordVisibility,
     checkStorageQuota,
     loadData,
     exportSubjectInfoCSV,

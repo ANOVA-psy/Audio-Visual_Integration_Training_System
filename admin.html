@@ -157,6 +157,72 @@
         📋 当前配置：<span id="cfgText">功能一 | 训练阶段 | 被试 P001</span>
       </div>
 
+      <!-- AI 自适应推荐策略面板 -->
+      <div id="aiStrategyPanel" class="mb-6 rounded-2xl border-2 border-purple-200 bg-gradient-to-br from-purple-50 via-white to-blue-50 overflow-hidden">
+        <div class="flex items-center justify-between px-5 py-3 bg-gradient-to-r from-purple-100 to-blue-100">
+          <div class="flex items-center gap-3">
+            <span class="text-2xl">🧠</span>
+            <div>
+              <div class="font-bold text-gray-800">AI 自适应推荐策略</div>
+              <div class="text-xs text-gray-500">基于最近评估结果动态生成下一次训练参数</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <span id="strategyModeBadge" class="px-3 py-1 rounded-full text-xs font-bold bg-purple-600 text-white">AI 自适应推荐</span>
+            <label class="flex items-center gap-2 cursor-pointer select-none">
+              <span class="text-xs text-gray-600">手动覆盖</span>
+              <input type="checkbox" id="manualOverrideToggle" class="sr-only peer">
+              <div class="relative w-10 h-5 bg-gray-300 peer-checked:bg-amber-500 rounded-full transition-colors">
+                <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <div class="px-5 py-3 grid grid-cols-2 gap-3 text-xs text-gray-600 border-b border-purple-100">
+          <div>当前运行策略：<strong id="strategyModeText" class="text-purple-700">AI 自适应推荐模式</strong></div>
+          <div>更新时间：<strong id="strategyUpdatedAt" class="text-gray-700">--</strong></div>
+          <div>被试编号：<strong id="strategySubject" class="text-gray-700">--</strong></div>
+          <div>引擎版本：<strong id="strategyVersion" class="text-gray-700">v1.0.0</strong></div>
+        </div>
+
+        <!-- AVIS 综合认知得分 -->
+        <div id="avisScorePanel" class="px-5 py-3 border-b border-purple-100">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-sm font-semibold text-gray-700">📊 综合认知指数 AVIS</span>
+            <span id="avisTotalScore" class="text-2xl font-extrabold text-purple-600">--</span>
+          </div>
+          <div class="grid grid-cols-4 gap-2 text-center text-xs">
+            <div class="p-2 bg-blue-50 rounded">
+              <div class="text-gray-500">听觉基底</div>
+              <div id="avisAuditory" class="font-bold text-blue-600 text-base">--</div>
+            </div>
+            <div class="p-2 bg-purple-50 rounded">
+              <div class="text-gray-500">视觉代偿</div>
+              <div id="avisVisual" class="font-bold text-purple-600 text-base">--</div>
+            </div>
+            <div class="p-2 bg-orange-50 rounded">
+              <div class="text-gray-500">时空整合</div>
+              <div id="avisIntegration" class="font-bold text-orange-600 text-base">--</div>
+            </div>
+            <div class="p-2 bg-red-50 rounded">
+              <div class="text-gray-500">注意抑制</div>
+              <div id="avisAttention" class="font-bold text-red-600 text-base">--</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4 个功能的下一次训练参数表单 -->
+        <div id="strategyParamsForm" class="px-5 py-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+          <!-- 由 JS 动态渲染 4 个功能卡片 -->
+        </div>
+
+        <div class="px-5 py-3 bg-gray-50 flex items-center justify-end gap-2 border-t border-purple-100">
+          <button onclick="recomputeAdaptive()" class="px-4 py-2 text-sm bg-white border border-purple-300 text-purple-700 rounded-lg hover:bg-purple-50">🔄 重新计算</button>
+          <button id="saveStrategyBtn" onclick="saveStrategyManually()" class="px-4 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 hidden">💾 保存手动配置</button>
+        </div>
+      </div>
+
       <!-- 操作按钮 -->
       <div class="grid grid-cols-2 gap-4">
         <button onclick="goToPreparation()" class="px-8 py-4 bg-primary hover:bg-blue-600 text-white text-xl font-bold rounded-xl shadow-lg transition-all">
@@ -486,6 +552,7 @@
 <script src="js/psychometric.js"></script>
 <script src="js/dataManager.js"></script>
 <script src="js/adminSettings.js"></script>
+<script src="js/adaptiveEngine.js"></script>
 <script src="modules/module1.js"></script>
 <script src="modules/module2.js"></script>
 <script src="modules/module3.js"></script>
@@ -522,9 +589,25 @@
     }
   }
 
-  // 初始化：从 localStorage 读取上次使用的被试编号
+  // 初始化：从最近创建的 settings 文件自动同步被试信息
   (function() {
     try {
+      // 优先从 AdminSettings.getLatestSubject() 获取最近被试
+      if (typeof AdminSettings !== 'undefined') {
+        const latest = AdminSettings.getLatestSubject();
+        if (latest && latest.subjectId) {
+          const subjectInput = document.getElementById('subjectId');
+          if (subjectInput) subjectInput.value = latest.subjectId;
+          // 同步到 localStorage
+          localStorage.setItem('lastSubjectId', latest.subjectId);
+          if (latest.gender) localStorage.setItem('lastGender', latest.gender);
+          if (latest.age) localStorage.setItem('lastAge', latest.age);
+          console.log('[admin] 从 settings 同步最近被试:', latest.subjectId);
+          return; // settings 数据优先，不再读 localStorage
+        }
+      }
+
+      // 回退：从 localStorage 读取
       const lastSubjectId = localStorage.getItem('lastSubjectId');
       if (lastSubjectId) {
         const subjectInput = document.getElementById('subjectId');
@@ -533,8 +616,266 @@
         }
       }
     } catch (e) {
-      console.warn('[admin] 从 localStorage 读取失败', e);
+      console.warn('[admin] 初始化同步失败', e);
     }
+  })();
+
+  // ==================== AI 自适应推荐策略面板 ====================
+  // 当前面板状态
+  let _adminPanelState = {
+    strategyMode: 'adaptive',   // 'adaptive' | 'manual'
+    manualOverride: false,
+    nextConfig: null,
+    avis: null
+  };
+
+  /**
+   * 渲染整个 AI 策略面板
+   * 流程：
+   *   1. 读取当前被试编号
+   *   2. 从 DataManager 聚合最近 active 评估结果
+   *   3. 调 AdaptiveEngine.generateNextConfig 生成下次配置
+   *   4. 调 AdaptiveEngine.calculateCognitiveScore 算 AVIS
+   *   5. 渲染参数表单与 AVIS 卡片
+   */
+  function renderAdminPanel() {
+    if (typeof AdaptiveEngine === 'undefined') return;
+
+    const subjectInput = document.getElementById('subjectId');
+    const userId = subjectInput && subjectInput.value ? subjectInput.value.trim() : '';
+
+    document.getElementById('strategySubject').textContent = userId || '（未选择被试）';
+    document.getElementById('strategyVersion').textContent = 'v' + AdaptiveEngine.VERSION;
+
+    if (!userId) {
+      document.getElementById('strategyUpdatedAt').textContent = '请先输入被试编号';
+      document.getElementById('strategyParamsForm').innerHTML =
+        '<div class="col-span-2 text-center text-gray-400 py-6">填写被试编号后将显示该被试的推荐配置</div>';
+      return;
+    }
+
+    // 1) 聚合评估
+    const evalResults = AdaptiveEngine.collectLatestEval(userId);
+    const hasAnyEval = ['func1','func2','func3','func4'].some(k => evalResults[k]);
+
+    // 2) 生成下次配置（即使无评估也用 fallback 默认值）
+    _adminPanelState.nextConfig = AdaptiveEngine.generateNextConfig(evalResults);
+
+    // 3) AVIS
+    _adminPanelState.avis = AdaptiveEngine.calculateCognitiveScore(evalResults);
+    renderAVISCard(_adminPanelState.avis, hasAnyEval);
+
+    // 4) 时间戳：用最新一条历史记录的时间
+    let latestTs = '';
+    try {
+      const allData = DataManager.getAllData()
+        .filter(d => d.metadata.subjectId === userId && (d.status === 'active' || !d.status));
+      if (allData.length > 0) {
+        allData.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        latestTs = new Date(allData[0].timestamp).toLocaleString('zh-CN');
+      }
+    } catch (e) {}
+    document.getElementById('strategyUpdatedAt').textContent = latestTs || new Date().toLocaleString('zh-CN');
+
+    // 5) 渲染参数表单
+    renderStrategyForm(_adminPanelState.nextConfig, _adminPanelState.manualOverride);
+  }
+
+  function renderAVISCard(avis, hasEval) {
+    if (!avis) return;
+    const tip = hasEval ? '' : ' <span class="text-xs text-gray-400">(暂无评估数据，使用默认估计)</span>';
+    document.getElementById('avisTotalScore').innerHTML   = avis.total + ' <span class="text-sm text-gray-400">/100</span>';
+    document.getElementById('avisAuditory').textContent   = avis.auditory;
+    document.getElementById('avisVisual').textContent     = avis.visual;
+    document.getElementById('avisIntegration').textContent = avis.integration;
+    document.getElementById('avisAttention').textContent  = avis.attention;
+    const panel = document.getElementById('avisScorePanel');
+    if (panel && tip) {
+      const title = panel.querySelector('span.text-sm');
+      if (title) title.innerHTML = '📊 综合认知指数 AVIS' + tip;
+    }
+  }
+
+  function renderStrategyForm(cfg, editable) {
+    const form = document.getElementById('strategyParamsForm');
+    if (!form || !cfg) return;
+
+    const funcMeta = [
+      { id: 1, name: '功能一 · 抗干扰',
+        cardCls: 'border-blue-200 bg-blue-50/40',
+        titleCls: 'text-blue-700', dotCls: 'bg-blue-500', valCls: 'text-blue-600',
+        fields: [
+          { key: 'initialSNR', label: '初始 SNR (dB)', step: 0.5 },
+          { key: 'repetitions', label: '每条件重复次数', step: 1, type: 'int' }
+      ]},
+      { id: 2, name: '功能二 · 视觉整合',
+        cardCls: 'border-purple-200 bg-purple-50/40',
+        titleCls: 'text-purple-700', dotCls: 'bg-purple-500', valCls: 'text-purple-600',
+        fields: [
+          { key: 'initialSNR',  label: '固定 SNR (dB)',   step: 0.5 },
+          { key: 'initialBlur', label: '初始模糊度 (%)',  step: 1, type: 'int' },
+          { key: 'repetitions', label: '每条件重复次数',   step: 1, type: 'int' }
+      ]},
+      { id: 3, name: '功能三 · 异步校准',
+        cardCls: 'border-orange-200 bg-orange-50/40',
+        titleCls: 'text-orange-700', dotCls: 'bg-orange-500', valCls: 'text-orange-600',
+        fields: [
+          { key: 'initialSNR',      label: '固定 SNR (dB)',           step: 0.5 },
+          { key: 'visualLeadStart', label: '视觉领先起点 (ms)',       step: 5, type: 'int' },
+          { key: 'audioLeadStart',  label: '听觉领先起点 (ms)',       step: 5, type: 'int' },
+          { key: 'repetitions',     label: '每条件重复次数',           step: 1, type: 'int' }
+      ]},
+      { id: 4, name: '功能四 · 注意定位',
+        cardCls: 'border-red-200 bg-red-50/40',
+        titleCls: 'text-red-700', dotCls: 'bg-red-500', valCls: 'text-red-600',
+        fields: [
+          { key: 'initialSNR',            label: '初始 SNR (dB)',         step: 0.5 },
+          { key: 'distractorAttenuation', label: '干扰源衰减 (dB)',       step: 0.5 },
+          { key: 'repetitions',           label: '每条件重复次数',         step: 1, type: 'int' }
+      ]}
+    ];
+
+    form.innerHTML = funcMeta.map(meta => {
+      const fc = cfg['func' + meta.id] || {};
+      const rows = meta.fields.map(f => {
+        const val = fc[f.key];
+        const display = (val == null) ? '--' : val;
+        const inputStep = f.step || 0.1;
+        if (editable) {
+          return `<div class="flex items-center justify-between gap-2 py-1">
+            <span class="text-gray-600">${f.label}</span>
+            <input type="number" step="${inputStep}"
+                   value="${display === '--' ? '' : display}"
+                   data-func="${meta.id}" data-key="${f.key}"
+                   class="strategy-input w-24 px-2 py-1 border border-gray-300 rounded text-right text-sm">
+          </div>`;
+        }
+        return `<div class="flex items-center justify-between py-1">
+          <span class="text-gray-600">${f.label}</span>
+          <span class="font-mono font-bold ${meta.valCls}">${display}</span>
+        </div>`;
+      }).join('');
+
+      return `
+        <div class="rounded-lg border ${meta.cardCls} p-3">
+          <div class="font-bold ${meta.titleCls} mb-2 flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full ${meta.dotCls}"></span>
+            ${meta.name}
+          </div>
+          ${rows}
+        </div>
+      `;
+    }).join('');
+  }
+
+  /**
+   * 手动覆盖开关 — 切换表单为可编辑/只读
+   */
+  function setupManualToggle() {
+    const toggle = document.getElementById('manualOverrideToggle');
+    if (!toggle) return;
+    toggle.addEventListener('change', function () {
+      _adminPanelState.manualOverride = this.checked;
+      _adminPanelState.strategyMode = this.checked ? 'manual' : 'adaptive';
+      // 更新 UI 状态
+      document.getElementById('strategyModeBadge').textContent =
+        this.checked ? '🔧 手动覆盖模式' : 'AI 自适应推荐';
+      document.getElementById('strategyModeBadge').className =
+        this.checked
+          ? 'px-3 py-1 rounded-full text-xs font-bold bg-amber-500 text-white'
+          : 'px-3 py-1 rounded-full text-xs font-bold bg-purple-600 text-white';
+      document.getElementById('strategyModeText').textContent =
+        this.checked ? '🔧 手动覆盖模式' : 'AI 自适应推荐模式';
+      document.getElementById('strategyModeText').className =
+        this.checked ? 'text-amber-700' : 'text-purple-700';
+      document.getElementById('saveStrategyBtn').classList.toggle('hidden', !this.checked);
+      // 重新渲染表单
+      renderStrategyForm(_adminPanelState.nextConfig, this.checked);
+    });
+  }
+
+  /**
+   * 重新计算（重新读评估、重生成）
+   */
+  window.recomputeAdaptive = function () {
+    renderAdminPanel();
+    if (typeof UIHelper !== 'undefined') UIHelper.showNotification('已重新计算策略', 'success', 1500);
+  };
+
+  /**
+   * 手动覆盖模式下：把表单值收集回 nextConfig 并保存
+   */
+  window.saveStrategyManually = function () {
+    if (!_adminPanelState.nextConfig) return;
+    const inputs = document.querySelectorAll('.strategy-input');
+    inputs.forEach(inp => {
+      const f = parseInt(inp.dataset.func, 10);
+      const k = inp.dataset.key;
+      const v = parseFloat(inp.value);
+      if (isFinite(v) && _adminPanelState.nextConfig['func' + f]) {
+        _adminPanelState.nextConfig['func' + f][k] = v;
+      }
+    });
+
+    const subjectInput = document.getElementById('subjectId');
+    const userId = subjectInput && subjectInput.value ? subjectInput.value.trim() : '';
+    if (!userId) {
+      if (typeof UIHelper !== 'undefined') UIHelper.showNotification('请先填写被试编号', 'warning');
+      return;
+    }
+
+    // 用手动覆盖后的 cfg 直接保存（绕过 AdaptiveEngine.saveNextSessionSettings 内部的 generateNextConfig）
+    const cfg = _adminPanelState.nextConfig;
+    const evalSnapshot = _adminPanelState.avis && _adminPanelState.avis.raw;
+
+    const settingsJson = {
+      userId: userId,
+      updatedAt: new Date().toISOString(),
+      version: AdaptiveEngine.VERSION,
+      strategyMode: 'manual',
+      evalSnapshot: evalSnapshot,
+      func1: cfg.func1, func2: cfg.func2, func3: cfg.func3, func4: cfg.func4
+    };
+
+    try {
+      localStorage.setItem('avis_next_settings_' + userId, JSON.stringify(settingsJson));
+      // 通过 AdminSettings 同步到 config/settings/ 目录
+      if (typeof AdminSettings !== 'undefined' && AdminSettings.saveSettings) {
+        const gender = (typeof STATE !== 'undefined' && STATE.gender) ? STATE.gender : '';
+        const age    = (typeof STATE !== 'undefined' && STATE.age)    ? STATE.age    : '';
+        for (let f = 1; f <= 4; f++) {
+          const moduleConfig = cfg['func' + f] || {};
+          const preset = AdminSettings.getPresetSettings(f, 'train');
+          const merged = Object.assign({}, preset, {
+            func: f, phase: 'train',
+            snrLevels:   moduleConfig.snrLevels   || preset.snrLevels,
+            blurLevels:  moduleConfig.blurLevels  || preset.blurLevels,
+            soaLevels:   moduleConfig.soaLevels   || preset.soaLevels,
+            attLevels:   moduleConfig.attLevels   || preset.attLevels,
+            repetitions: moduleConfig.repetitions || preset.repetitions,
+            snrMode:     moduleConfig.snrMode     || preset.snrMode,
+            _aiMeta: { generatedAt: settingsJson.updatedAt, strategyMode: 'manual',
+              initialSNR: moduleConfig.initialSNR, initialBlur: moduleConfig.initialBlur,
+              visualLeadStart: moduleConfig.visualLeadStart, audioLeadStart: moduleConfig.audioLeadStart,
+              distractorAttenuation: moduleConfig.distractorAttenuation }
+          });
+          AdminSettings.saveSettings(userId, 'train', f, merged, gender, age);
+        }
+      }
+      if (typeof UIHelper !== 'undefined') UIHelper.showNotification('✅ 手动配置已保存', 'success');
+    } catch (e) {
+      console.error('[saveStrategyManually] 保存失败', e);
+      if (typeof UIHelper !== 'undefined') UIHelper.showNotification('保存失败：' + e.message, 'error');
+    }
+  };
+
+  // 监听被试编号变化 → 重渲染面板
+  (function () {
+    const subj = document.getElementById('subjectId');
+    if (subj) subj.addEventListener('change', renderAdminPanel);
+    setupManualToggle();
+    // 初次渲染（稍延迟以确保 AdminSettings/DataManager 已就绪）
+    setTimeout(renderAdminPanel, 200);
   })();
 </script>
 

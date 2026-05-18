@@ -54,55 +54,188 @@
 
   // ==================== 快速启动（病人界面） ====================
 
+  // 记录已确认的被试信息签名，仅当签名变化时才重新弹确认框
+  let _confirmedSubjectKey = null;
+
   /**
-   * 快速启动：病人从快速界面选择阶段后进入引导页
+   * 快速启动：病人从快速界面选择阶段
+   * 第一次点击（或被试信息改动后）弹出确认对话框，确认后生成settings并进入引导页
+   * 同一会话内信息未变时直接进入引导页，无需再次确认
    * @param {'pre'|'train'|'post'} phase
    */
   window.quickStart = function(phase) {
-    STATE.phase = phase;
-    STATE.subjectId = document.getElementById('quickSubjectId')?.value || 'P001';
+    const subjectId = document.getElementById('quickSubjectId')?.value?.trim() || 'P001';
+    const gender    = document.getElementById('quickGender')?.value || '';
+    const age       = document.getElementById('quickAge')?.value || '';
 
-    // 新增：读取性别和年龄
-    STATE.gender = document.getElementById('quickGender')?.value || '';
-    STATE.age = document.getElementById('quickAge')?.value || '';
-
-    // 同步到管理员页被试ID
-    const adminSubjectId = document.getElementById('subjectId');
-    if (adminSubjectId) adminSubjectId.value = STATE.subjectId;
-
-    // ★ 保存到 localStorage，实现页面间同步
-    try {
-      localStorage.setItem('lastSubjectId', STATE.subjectId);
-      localStorage.setItem('lastGender', STATE.gender);
-      localStorage.setItem('lastAge', STATE.age);
-    } catch (e) {
-      console.warn('[quickStart] 保存到 localStorage 失败', e);
+    // 输入验证
+    if (!subjectId) {
+      UIHelper.showNotification('请输入被试编号', 'warning');
+      return;
+    }
+    if (!gender) {
+      UIHelper.showNotification('请选择性别', 'warning');
+      return;
+    }
+    if (!age || age < 1) {
+      UIHelper.showNotification('请输入有效年龄', 'warning');
+      return;
     }
 
-    // 检查预加载状态，若未完成则显示提示
-    if (typeof Preloader !== 'undefined' && !Preloader.isReady()) {
-      const status = Preloader.getStatus();
-      if (status.total > 0 && status.percent < 100) {
-        alert(`实验材料正在缓存中（${status.percent}%），请稍候...\n缓存完成后将自动开始。`);
+    const subjectKey = `${subjectId}|${gender}|${age}`;
+
+    // 真正进入实验流程的逻辑
+    const proceed = () => {
+      STATE.phase     = phase;
+      STATE.subjectId = subjectId;
+      STATE.gender    = gender;
+      STATE.age       = age;
+
+      // 同步到管理员页被试ID
+      const adminSubjectId = document.getElementById('subjectId');
+      if (adminSubjectId) adminSubjectId.value = STATE.subjectId;
+
+      // 保存到 localStorage，实现页面间同步
+      try {
+        localStorage.setItem('lastSubjectId', STATE.subjectId);
+        localStorage.setItem('lastGender', STATE.gender);
+        localStorage.setItem('lastAge', STATE.age);
+      } catch (e) {
+        console.warn('[quickStart] 保存到 localStorage 失败', e);
       }
-      // 等待预加载完成后再进入引导页
-      Preloader.waitForReady(60000).then((ready) => {
-        if (ready) {
-          console.log('[quickStart] 预加载完成，进入引导页');
-        } else {
-          console.warn('[quickStart] 预加载超时，仍进入引导页');
+
+      // 检查预加载状态，若未完成则显示提示
+      if (typeof Preloader !== 'undefined' && !Preloader.isReady()) {
+        const status = Preloader.getStatus();
+        if (status.total > 0 && status.percent < 100) {
+          alert(`实验材料正在缓存中（${status.percent}%），请稍候...\n缓存完成后将自动开始。`);
         }
-        // 更新引导页内容
-        updateGuideScreen(phase);
-        UIHelper.showScreen('guide');
-      });
-      return; // 等待异步完成
+        Preloader.waitForReady(60000).then((ready) => {
+          if (ready) {
+            console.log('[quickStart] 预加载完成，进入引导页');
+          } else {
+            console.warn('[quickStart] 预加载超时，仍进入引导页');
+          }
+          updateGuideScreen(phase);
+          UIHelper.showScreen('guide');
+        });
+        return;
+      }
+
+      // 更新引导页内容
+      updateGuideScreen(phase);
+      UIHelper.showScreen('guide');
+    };
+
+    // 已确认过（且信息未变）→ 直接进入，不再弹窗
+    if (_confirmedSubjectKey === subjectKey) {
+      proceed();
+      return;
     }
 
-    // 更新引导页内容
-    updateGuideScreen(phase);
-    UIHelper.showScreen('guide');
+    // 第一次（或信息有改动）→ 弹出自定义确认框
+    showSubjectConfirm(subjectId, gender, age, function onConfirm() {
+      _confirmedSubjectKey = subjectKey;
+      // ★ 确认后：为当前阶段生成所有功能的预设settings
+      generateSubjectSettings(subjectId, phase, gender, age);
+      proceed();
+    }, function onCancel() {
+      console.log('[quickStart] 用户取消确认，返回修改');
+    });
   };
+
+  /**
+   * 自定义被试信息确认弹窗（专为 quickStart 设计）
+   * 不显示阶段，外观更现代
+   */
+  function showSubjectConfirm(subjectId, gender, age, onConfirm, onCancel) {
+    const genderText = gender === 'male' ? '男' : '女';
+    const genderIcon = gender === 'male' ? '👨' : '👩';
+
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.55);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:9999;animation:fadeIn .2s ease;';
+
+    modal.innerHTML = `
+      <style>
+        @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+        @keyframes popIn  { from{transform:scale(.92);opacity:0} to{transform:scale(1);opacity:1} }
+        .subj-confirm-card { animation: popIn .25s cubic-bezier(.34,1.56,.64,1); }
+        .subj-info-row { display:flex; align-items:center; padding:14px 16px; border-radius:14px; background:#f8fafc; margin-bottom:10px; transition:background .15s; }
+        .subj-info-row:hover { background:#f1f5f9; }
+        .subj-info-icon { font-size:24px; margin-right:14px; }
+        .subj-info-label { color:#64748b; font-size:13px; min-width:56px; }
+        .subj-info-value { color:#0f172a; font-size:16px; font-weight:600; margin-left:auto; }
+        .subj-btn { flex:1; padding:13px 0; border-radius:14px; font-size:15px; font-weight:600; cursor:pointer; border:none; transition:all .15s; }
+        .subj-btn-cancel { background:#f1f5f9; color:#475569; }
+        .subj-btn-cancel:hover { background:#e2e8f0; }
+        .subj-btn-ok { background:linear-gradient(135deg,#3b82f6,#2563eb); color:#fff; box-shadow:0 4px 14px rgba(59,130,246,.4); }
+        .subj-btn-ok:hover { transform:translateY(-1px); box-shadow:0 6px 20px rgba(59,130,246,.5); }
+      </style>
+      <div class="subj-confirm-card" style="background:#fff;border-radius:24px;padding:28px;width:90%;max-width:380px;box-shadow:0 20px 60px rgba(0,0,0,.25);">
+        <div style="text-align:center;margin-bottom:20px;">
+          <div style="width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#dbeafe,#bfdbfe);display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 12px;">📋</div>
+          <h3 style="font-size:20px;font-weight:700;color:#0f172a;margin:0 0 4px;">请核对被试信息</h3>
+          <p style="font-size:13px;color:#94a3b8;margin:0;">确认后将创建该被试的配置文件</p>
+        </div>
+
+        <div style="margin-bottom:20px;">
+          <div class="subj-info-row">
+            <span class="subj-info-icon">🆔</span>
+            <span class="subj-info-label">编号</span>
+            <span class="subj-info-value">${subjectId}</span>
+          </div>
+          <div class="subj-info-row">
+            <span class="subj-info-icon">${genderIcon}</span>
+            <span class="subj-info-label">性别</span>
+            <span class="subj-info-value">${genderText}</span>
+          </div>
+          <div class="subj-info-row">
+            <span class="subj-info-icon">🎂</span>
+            <span class="subj-info-label">年龄</span>
+            <span class="subj-info-value">${age} 岁</span>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:10px;">
+          <button id="subjConfirmCancel" class="subj-btn subj-btn-cancel">返回修改</button>
+          <button id="subjConfirmOk" class="subj-btn subj-btn-ok">确认开始</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    const close = () => modal.remove();
+    document.getElementById('subjConfirmCancel').onclick = () => { close(); if (onCancel) onCancel(); };
+    document.getElementById('subjConfirmOk').onclick     = () => { close(); if (onConfirm) onConfirm(); };
+    // 点击遮罩也视为取消
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) { close(); if (onCancel) onCancel(); }
+    });
+  }
+
+  /**
+   * 为指定被试的当前阶段生成所有功能的预设settings
+   * 仅在确认信息后调用一次，后续admin界面修改时再更新
+   * @param {string} subjectId - 被试编号
+   * @param {string} phase - 阶段（pre/train/post）
+   * @param {string} gender - 性别
+   * @param {string} age - 年龄
+   */
+  function generateSubjectSettings(subjectId, phase, gender, age) {
+    for (let func = 1; func <= 4; func++) {
+      // 跳过已有配置的功能（避免覆盖admin已修改的设置）
+      const existing = AdminSettings.getSettings(subjectId, phase, func);
+      if (existing && existing.settings && existing.settings.snrLevels && existing.settings.snrLevels.length > 0) {
+        console.log(`[generateSubjectSettings] 跳过已有配置: func${func}_${phase}`);
+        continue;
+      }
+      const preset = AdminSettings.getPresetSettings(func, phase);
+      AdminSettings.saveSettings(subjectId, phase, func, preset, gender, age);
+    }
+    console.log(`[generateSubjectSettings] 已为 ${subjectId} 生成 ${phase} 阶段的预设配置`);
+  }
 
   function updateGuideScreen(phase) {
     const phaseInfo = {
@@ -209,16 +342,10 @@
     const savedSettings = AdminSettings.getSettings(STATE.subjectId, STATE.phase, funcId);
 
     if (!savedSettings || !savedSettings.settings) {
-      // 没有保存的配置，直接使用系统推荐设置
-      console.log('[QuickStart] 未找到保存的设置，使用系统推荐设置', funcId);
+      // 没有保存的配置，直接使用系统预设（纯数据，不依赖 UI）
+      console.log('[QuickStart] 未找到保存的设置，使用系统预设配置', funcId);
 
-      // 应用系统推荐设置到 UI
-      if (typeof AdminSettings.applyDefaultSettings === 'function') {
-        AdminSettings.applyDefaultSettings();
-      }
-
-      // 从 UI 收集设置
-      const settings = collectSettingsFromUI();
+      const settings = AdminSettings.getPresetSettings(funcId, STATE.phase);
 
       // 保存设置（包含性别和年龄）
       AdminSettings.saveSettings(
@@ -252,7 +379,9 @@
       soaLevels: getSelectedValues('.soa-lvl'),
       attLevels: getSelectedValues('.att-lvl'),
       repetitions: parseInt(document.getElementById('snrReps')?.value) || 3,
-      order: getCurrentOrder()
+      snrMode: document.getElementById('snrMode')?.value || 'adaptive',
+      order: getCurrentOrder(),
+      orderState: Object.assign({}, orderState)
     };
   }
 
@@ -364,7 +493,9 @@
       soaLevels:  getSelectedValues('.soa-lvl'),
       attLevels:  getSelectedValues('.att-lvl'),
       repetitions: parseInt(document.getElementById('snrReps')?.value) || 3,
-      order: getCurrentOrder()
+      snrMode:    document.getElementById('snrMode')?.value || 'adaptive',
+      order: getCurrentOrder(),
+      orderState: Object.assign({}, orderState)
     };
 
     if (funcId === 1) return Module1.generateTrialQueue(config);
@@ -924,7 +1055,9 @@
         soaLevels:  getSelectedValues('.soa-lvl'),
         attLevels:  getSelectedValues('.att-lvl'),
         repetitions: parseInt(document.getElementById('snrReps')?.value) || 3,
-        order: getCurrentOrder()
+        snrMode:    document.getElementById('snrMode')?.value || 'adaptive',
+        order: getCurrentOrder(),
+        orderState: Object.assign({}, orderState)
       };
       
       // ★ 保存管理员设置（按被试、阶段、功能保存）
@@ -1360,27 +1493,8 @@
           }
         }
         
-        // 然后显示提示
-        const hintText = `📍 本试次请定位${side === 'left' ? '左侧' : '右侧'}目标说话人的内容`;
-        
-        // 使用覆盖层显示在视频上方
-        const overlay = document.getElementById('trialOverlay');
-        const overlayText = document.getElementById('trialOverlayText');
-        if (overlay && overlayText) {
-          overlayText.textContent = hintText;
-          overlay.classList.remove('hidden');
-        } else {
-          // 如果覆盖层不存在，使用题目区域显示
-          const q = document.getElementById('expQuestion');
-          if (q) {
-            q.innerHTML = `请定位<strong>${side === 'left' ? '左侧' : '右侧'}</strong>目标说话人的内容：`;
-          }
-        }
-        
-        // 1.5秒后自动隐藏覆盖层
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        
-        if (overlay) overlay.classList.add('hidden');
+        // ★ 已删除：原本在试次开始就弹出 1.5s 的左/右提示
+        // 现在改为在用户点击播放按钮后才弹出 1s 提示（见 expPlay 中的 showAttentionCue）
       }
 
       // 洗牌选项（只做一次）
@@ -1517,10 +1631,9 @@
       // ★ 在播放前显示题目
       updateTrialUI(trial);
 
+      // 播放期间：按钮显示「🔊 播放中...」，选项保持禁用
       updatePlayButton(true);
-
-      // ★ 关键修改：播放开始后立刻启用选项按钮，不等播放完
-      enableChoiceButtons(true);
+      enableChoiceButtons(false);
       STATE.isWaitingForResponse = false;
 
       updateExpConditionDisplay(trial);
@@ -1539,13 +1652,6 @@
       if (STATE.func === 1) {
         // 纯音频，用试次对应音频文件
         await AudioProcessor.playMixedAudioFile(mat.audio, trial.snr);
-        // 播放完成提示
-        UIHelper.showNotification('播放完成，请选择答案', 'success', 1500);
-        // 播放完后才开始计时
-        STATE.isPlaying = false;
-        STATE.isWaitingForResponse = true;
-        STATE.responseStartTime = Date.now();
-        updatePlayButton(false);
       } else if (STATE.func === 2) {
         // 更新视频为本次试次对应材料
         const video = document.getElementById('expVideo');
@@ -1575,105 +1681,94 @@
             setTimeout(resolve, 8000); // 超时保护
           });
         }
-        // 播放完成提示
-        UIHelper.showNotification('播放完成，请选择答案', 'success', 1500);
-        video.pause();
-        video.currentTime = 0;
-        // 播放完后才开始计时
-        STATE.isPlaying = false;
-        STATE.isWaitingForResponse = true;
-        STATE.responseStartTime = Date.now();
-        updatePlayButton(false);
+        if (video) { video.pause(); video.currentTime = 0; }
       } else if (STATE.func === 3) {
         await playWithSOA(trial, mat);
-        // playWithSOA 内部会设置 isWaitingForResponse
-        // 播放完成提示
-        UIHelper.showNotification('播放完成，请选择答案', 'success', 1500);
-        STATE.isPlaying = false;
-        STATE.isWaitingForResponse = true;
-        STATE.responseStartTime = Date.now();
-        updatePlayButton(false);
       } else if (STATE.func === 4) {
-        // ★ 修复：根据 trial.targetSide 动态设置视频源和标签
+        // ★ 根据 trial.targetSide 动态设置视频源和标签
         const targetSide = trial.targetSide || 'left';
-        
+
         // 动态更新视频标签
         const leftLabel = document.getElementById('expTargetLabel');
         const rightLabel = document.getElementById('expDistractorLabel');
         if (leftLabel && rightLabel) {
           if (targetSide === 'left') {
-            // 目标在左
             leftLabel.textContent = '👤 目标';
             leftLabel.className = 'absolute top-1 left-1 bg-blue-600 text-white text-xs px-2 py-0.5 rounded';
             rightLabel.textContent = '🚫 干扰';
             rightLabel.className = 'absolute top-1 right-1 bg-red-600 text-white text-xs px-2 py-0.5 rounded';
           } else {
-            // 目标在右
             leftLabel.textContent = '🚫 干扰';
             leftLabel.className = 'absolute top-1 left-1 bg-red-600 text-white text-xs px-2 py-0.5 rounded';
             rightLabel.textContent = '👤 目标';
             rightLabel.className = 'absolute top-1 right-1 bg-blue-600 text-white text-xs px-2 py-0.5 rounded';
           }
         }
-        
-        // 更新提示文本
-        const expQuestion = document.getElementById('expQuestion');
-        if (expQuestion) {
-          expQuestion.innerHTML = `请定位<strong>${targetSide === 'left' ? '左侧' : '右侧'}</strong>目标说话人的内容：`;
-        }
-        
-        // 根据目标位置决定哪个视频播放目标材料
+
+        // ★ 新增：弹出 1s「请注意 左/右」提示后再开始播放
+        await showAttentionCue(targetSide);
+
+        // 准备视频元素
+        let targetVideo, distVideo;
         if (targetSide === 'left') {
-          // 目标在左：左侧播放目标，右侧播放干扰（如果 dual）
-          const targetVideo = document.getElementById('expVideoTarget');
-          const targetSrc   = document.getElementById('expTargetSrc');
+          targetVideo = document.getElementById('expVideoTarget');
+          const targetSrc = document.getElementById('expTargetSrc');
           if (targetSrc) targetSrc.src = mat.video;
-          if (targetVideo) { targetVideo.load(); targetVideo.currentTime = 0; await targetVideo.play(); }
-          
-          if (trial.attention === 'dual') {
-            const distIdx   = (Config.MATERIALS.findIndex(m => m.label === trial.word) + 1) % Config.MATERIALS.length;
-            const distMat   = Config.MATERIALS[distIdx];
-            const distVideo = document.getElementById('expVideoDist');
-            const distSrc   = document.getElementById('expDistSrc');
-            if (distSrc) distSrc.src = distMat.video;
-            if (distVideo) { distVideo.load(); distVideo.currentTime = 0; await distVideo.play(); }
-            
-            // ★ 新增：同时播放目标音频和干扰音频并混音
-            await AudioProcessor.playDualMixedAudioFile(mat.audio, distMat.audio, trial.snr);
-          } else {
-            // 单人模式：只播放目标音频
-            await AudioProcessor.playMixedAudioFile(mat.audio, trial.snr);
-          }
+          if (targetVideo) { targetVideo.load(); targetVideo.currentTime = 0; }
         } else {
-          // 目标在右：右侧播放目标，左侧播放干扰（如果 dual）
-          const targetVideo = document.getElementById('expVideoDist');  // 右侧视频
-          const targetSrc   = document.getElementById('expDistSrc');
+          targetVideo = document.getElementById('expVideoDist');
+          const targetSrc = document.getElementById('expDistSrc');
           if (targetSrc) targetSrc.src = mat.video;
-          if (targetVideo) { targetVideo.load(); targetVideo.currentTime = 0; await targetVideo.play(); }
-          
-          if (trial.attention === 'dual') {
-            const distIdx   = (Config.MATERIALS.findIndex(m => m.label === trial.word) + 1) % Config.MATERIALS.length;
-            const distMat   = Config.MATERIALS[distIdx];
-            const distVideo = document.getElementById('expVideoTarget'); // 左侧视频
-            const distSrc   = document.getElementById('expTargetSrc');
-            if (distSrc) distSrc.src = distMat.video;
-            if (distVideo) { distVideo.load(); distVideo.currentTime = 0; await distVideo.play(); }
-            
-            // ★ 新增：同时播放目标音频和干扰音频并混音
-            await AudioProcessor.playDualMixedAudioFile(mat.audio, distMat.audio, trial.snr);
-          } else {
-            // 单人模式：只播放目标音频
-            await AudioProcessor.playMixedAudioFile(mat.audio, trial.snr);
-          }
+          if (targetVideo) { targetVideo.load(); targetVideo.currentTime = 0; }
         }
+
+        // 双说话人模式准备干扰视频
+        let distMat = null;
+        if (trial.attention === 'dual') {
+          const distIdx = (Config.MATERIALS.findIndex(m => m.label === trial.word) + 1) % Config.MATERIALS.length;
+          distMat = Config.MATERIALS[distIdx];
+          distVideo = targetSide === 'left'
+            ? document.getElementById('expVideoDist')
+            : document.getElementById('expVideoTarget');
+          const distSrcEl = targetSide === 'left'
+            ? document.getElementById('expDistSrc')
+            : document.getElementById('expTargetSrc');
+          if (distSrcEl) distSrcEl.src = distMat.video;
+          if (distVideo) { distVideo.load(); distVideo.currentTime = 0; }
+        }
+
+        // 同步开始播放视频
+        const playPromises = [];
+        if (targetVideo) playPromises.push(targetVideo.play().catch(() => {}));
+        if (distVideo)   playPromises.push(distVideo.play().catch(() => {}));
+        await Promise.all(playPromises);
+
+        // 播放音频（混音 or 单音）
+        if (trial.attention === 'dual' && distMat) {
+          await AudioProcessor.playDualMixedAudioFile(mat.audio, distMat.audio, trial.snr);
+        } else {
+          await AudioProcessor.playMixedAudioFile(mat.audio, trial.snr);
+        }
+
+        // ★ 关键：等待所有视频播放结束（音频已 await 完成，等视频自然结束）
+        const waitVideo = (v) => new Promise(resolve => {
+          if (!v || v.ended) return resolve();
+          v.onended = resolve;
+          setTimeout(resolve, 8000); // 超时保护
+        });
+        await Promise.all([waitVideo(targetVideo), waitVideo(distVideo)]);
+        if (targetVideo) { targetVideo.pause(); targetVideo.currentTime = 0; }
+        if (distVideo)   { distVideo.pause();   distVideo.currentTime = 0; }
       }
-      
-      // ★ 关键修改：播放完成后才开始计时，但选项已经在播放期间可用
+
+      // ★ 播放完成统一收尾：按钮显示「✅ 播放完成」并启用选项
       STATE.isPlaying = false;
       STATE.isWaitingForResponse = true;
-      STATE.responseStartTime = Date.now(); // ★ 播放完才开始计时
-      updatePlayButton(false);
-      
+      STATE.responseStartTime = Date.now();
+      updatePlayButton(false, true); // 第二参数 true 表示「播放完成」状态
+      enableChoiceButtons(true);
+      UIHelper.showNotification('播放完成，请选择答案', 'success', 1500);
+
       // ★ 播放完启动超时计时器（如果用户还没选择）
       if (responseTimeoutId) clearTimeout(responseTimeoutId);
       responseTimeoutId = setTimeout(() => {
@@ -1825,20 +1920,50 @@
   // 播放键就绪状态标志
   let playButtonReady = { video: false, choices: false };
 
-  function updatePlayButton(isPlaying) {
+  function updatePlayButton(isPlaying, justFinished = false) {
     ['exp1PlayBtn','exp2PlayBtn','exp3PlayBtn','exp4PlayBtn'].forEach(id => {
       const btn = document.getElementById(id);
       if (btn) {
-        btn.disabled = isPlaying;
-        btn.classList.toggle('opacity-50', isPlaying);
-        btn.classList.toggle('play-pulse', !isPlaying);
+        btn.disabled = isPlaying || justFinished;
+        btn.classList.toggle('opacity-50', isPlaying || justFinished);
+        btn.classList.toggle('play-pulse', !isPlaying && !justFinished);
         if (isPlaying) {
           btn.textContent = '🔊 播放中...';
+        } else if (justFinished) {
+          btn.textContent = '✅ 播放完成，请选择答案';
         } else {
           const labels = {1:'▶️ 播放（按空格键）', 2:'▶️ 播放（按空格键）', 3:'▶️ 同步播放（按空格键）', 4:'▶️ 播放（按空格键）'};
           btn.textContent = labels[STATE.func] || '▶️ 播放';
         }
       }
+    });
+  }
+
+  /**
+   * 功能 4 专用：在正式播放视频前，弹出 1s「请注意左/右」提示
+   * 复用 #trialOverlay 覆盖层
+   * @param {'left'|'right'} side
+   * @returns {Promise<void>}
+   */
+  function showAttentionCue(side) {
+    return new Promise(resolve => {
+      const overlay = document.getElementById('trialOverlay');
+      if (!overlay) { resolve(); return; }
+      const sideText = side === 'left' ? '左侧 ⬅️' : '右侧 ➡️';
+      const sideColor = side === 'left' ? '#3b82f6' : '#10b981';
+      overlay.innerHTML = `
+        <div style="text-align:center;color:#fff;">
+          <div style="font-size:42px;font-weight:800;margin-bottom:8px;">👁️ 请注意</div>
+          <div style="font-size:56px;font-weight:800;color:${sideColor};text-shadow:0 2px 8px rgba(0,0,0,.4);">${sideText}</div>
+          <div style="font-size:14px;color:#cbd5e1;margin-top:10px;">即将开始播放…</div>
+        </div>
+      `;
+      overlay.classList.remove('hidden');
+      setTimeout(() => {
+        overlay.classList.add('hidden');
+        overlay.innerHTML = '';
+        resolve();
+      }, 1000);
     });
   }
 
@@ -2073,6 +2198,21 @@
         const recordId = DataManager.saveExperimentData(metadata, STATE.results);
         DataManager.downloadToLocal(metadata, STATE.results, fitResult);
         console.log('[showResults] 数据已保存，recordId:', recordId);
+
+        // ★ 链式自适应：聚合最近 active 评估并生成 + 保存下次训练 settings
+        try {
+          if (typeof AdaptiveEngine !== 'undefined' && STATE.subjectId) {
+            const evalResults = AdaptiveEngine.collectLatestEval(STATE.subjectId);
+            // 覆盖当前 func 的最新评估（刚刚算出的，比历史记录更新）
+            if (fitResult) evalResults['func' + STATE.func] = fitResult;
+            const nextSettings = AdaptiveEngine.saveNextSessionSettings(
+              evalResults, STATE.subjectId, { phase: 'train' }
+            );
+            console.log('[showResults] 下次训练自适应配置已生成:', nextSettings);
+          }
+        } catch (e) {
+          console.warn('[showResults] 自适应配置生成失败:', e);
+        }
 
         // 跳转到 result.html 显示结果
         if (recordId) {
@@ -2455,6 +2595,7 @@
 
     if (key === ' ') {
       event.preventDefault();
+      // 播放中、播放完成等待作答都不允许再触发播放
       if (!STATE.isPlaying && !STATE.isWaitingForResponse) window.expPlay();
     }
     if (['a','b','c','d'].includes(key)) {
@@ -2494,7 +2635,7 @@
     if (STATE.func === 1) return Module1.calculateThreshold(STATE.results);
     if (STATE.func === 2) return Module2.calculateVisualGain(STATE.results);
     if (STATE.func === 3) return Module3.calculateIntegrationWindow(STATE.results);
-    if (STATE.func === 4) return Module4.calculateInterferenceSuppressionCost(STATE.results);
+    if (STATE.func === 4) return Module4.calculateInterferenceCost(STATE.results);
     return null;
   }
 
