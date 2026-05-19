@@ -82,26 +82,15 @@
     "func3_pre": {
       "phase": "pre",
       "func": 3,
-      "timestamp": "2026-05-18T17:35:09.574Z",
+      "timestamp": "2026-05-19T05:27:34.606Z",
       "settings": {
-        "func": 3,
-        "phase": "pre",
         "snrLevels": [
-          9,
-          6,
-          3,
-          0,
-          -3,
-          -6,
-          -9
+          9
         ],
         "blurLevels": [
           0
         ],
         "soaLevels": [
-          -300,
-          -200,
-          -100,
           0,
           100,
           200,
@@ -303,5 +292,5 @@
       }
     }
   },
-  "updatedAt": "2026-05-18T17:43:40.655Z"
+  "updatedAt": "2026-05-19T05:27:34.606Z"
 }

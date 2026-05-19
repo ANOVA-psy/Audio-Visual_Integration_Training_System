@@ -157,72 +157,6 @@
         📋 当前配置：<span id="cfgText">功能一 | 训练阶段 | 被试 P001</span>
       </div>
 
-      <!-- AI 自适应推荐策略面板 -->
-      <div id="aiStrategyPanel" class="mb-6 rounded-2xl border-2 border-purple-200 bg-gradient-to-br from-purple-50 via-white to-blue-50 overflow-hidden">
-        <div class="flex items-center justify-between px-5 py-3 bg-gradient-to-r from-purple-100 to-blue-100">
-          <div class="flex items-center gap-3">
-            <span class="text-2xl">🧠</span>
-            <div>
-              <div class="font-bold text-gray-800">AI 自适应推荐策略</div>
-              <div class="text-xs text-gray-500">基于最近评估结果动态生成下一次训练参数</div>
-            </div>
-          </div>
-          <div class="flex items-center gap-3">
-            <span id="strategyModeBadge" class="px-3 py-1 rounded-full text-xs font-bold bg-purple-600 text-white">AI 自适应推荐</span>
-            <label class="flex items-center gap-2 cursor-pointer select-none">
-              <span class="text-xs text-gray-600">手动覆盖</span>
-              <input type="checkbox" id="manualOverrideToggle" class="sr-only peer">
-              <div class="relative w-10 h-5 bg-gray-300 peer-checked:bg-amber-500 rounded-full transition-colors">
-                <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
-              </div>
-            </label>
-          </div>
-        </div>
-
-        <div class="px-5 py-3 grid grid-cols-2 gap-3 text-xs text-gray-600 border-b border-purple-100">
-          <div>当前运行策略：<strong id="strategyModeText" class="text-purple-700">AI 自适应推荐模式</strong></div>
-          <div>更新时间：<strong id="strategyUpdatedAt" class="text-gray-700">--</strong></div>
-          <div>被试编号：<strong id="strategySubject" class="text-gray-700">--</strong></div>
-          <div>引擎版本：<strong id="strategyVersion" class="text-gray-700">v1.0.0</strong></div>
-        </div>
-
-        <!-- AVIS 综合认知得分 -->
-        <div id="avisScorePanel" class="px-5 py-3 border-b border-purple-100">
-          <div class="flex items-center justify-between mb-2">
-            <span class="text-sm font-semibold text-gray-700">📊 综合认知指数 AVIS</span>
-            <span id="avisTotalScore" class="text-2xl font-extrabold text-purple-600">--</span>
-          </div>
-          <div class="grid grid-cols-4 gap-2 text-center text-xs">
-            <div class="p-2 bg-blue-50 rounded">
-              <div class="text-gray-500">听觉基底</div>
-              <div id="avisAuditory" class="font-bold text-blue-600 text-base">--</div>
-            </div>
-            <div class="p-2 bg-purple-50 rounded">
-              <div class="text-gray-500">视觉代偿</div>
-              <div id="avisVisual" class="font-bold text-purple-600 text-base">--</div>
-            </div>
-            <div class="p-2 bg-orange-50 rounded">
-              <div class="text-gray-500">时空整合</div>
-              <div id="avisIntegration" class="font-bold text-orange-600 text-base">--</div>
-            </div>
-            <div class="p-2 bg-red-50 rounded">
-              <div class="text-gray-500">注意抑制</div>
-              <div id="avisAttention" class="font-bold text-red-600 text-base">--</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 4 个功能的下一次训练参数表单 -->
-        <div id="strategyParamsForm" class="px-5 py-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-          <!-- 由 JS 动态渲染 4 个功能卡片 -->
-        </div>
-
-        <div class="px-5 py-3 bg-gray-50 flex items-center justify-end gap-2 border-t border-purple-100">
-          <button onclick="recomputeAdaptive()" class="px-4 py-2 text-sm bg-white border border-purple-300 text-purple-700 rounded-lg hover:bg-purple-50">🔄 重新计算</button>
-          <button id="saveStrategyBtn" onclick="saveStrategyManually()" class="px-4 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 hidden">💾 保存手动配置</button>
-        </div>
-      </div>
-
       <!-- 操作按钮 -->
       <div class="grid grid-cols-2 gap-4">
         <button onclick="goToPreparation()" class="px-8 py-4 bg-primary hover:bg-blue-600 text-white text-xl font-bold rounded-xl shadow-lg transition-all">
@@ -256,14 +190,37 @@
       <div id="phaseIndicator" class="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg text-sm font-medium">训练阶段</div>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
       <!-- 左：变量控制 -->
-      <div class="bg-white rounded-2xl shadow-xl p-6">
-        <h3 class="font-bold text-gray-800 mb-4 flex items-center gap-2"><span>⚙️</span> 实验变量设置</h3>
-        <button onclick="applyDefaultSettings()"
-                    class="px-4 py-2 bg-gray-200 hover:bg-teal-600 text-black rounded-lg transition-colors text-sm mb-4">
-              🔄 重置为系统推荐配置
-            </button>
+      <div class="bg-white rounded-2xl shadow-xl p-6 h-full flex flex-col">
+        <!-- 标题 + 当前模式徽章（让被试一眼看清"自己用的是哪种设置"） -->
+        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <h3 class="font-bold text-gray-800 flex items-center gap-2"><span>⚙️</span> 实验变量设置</h3>
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-gray-500">当前模式</span>
+            <span id="varModeBadge"
+                  class="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-200 text-slate-700 transition-colors"
+                  title="变量来源：系统默认 / 手动自定义 / AI 推荐">
+              📦 系统默认
+            </span>
+          </div>
+        </div>
+
+        
+
+        <!-- 重置按钮 + AI 推荐入口（仅训练阶段可见） -->
+        <div class="flex items-center gap-2 mb-4 flex-wrap">
+          <button id="btnResetToDefault" onclick="applyDefaultSettings()"
+                  class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors text-sm font-medium border border-slate-300"
+                  title="重置为系统预设的统一起点（与 AI 推荐不同：不依赖该被试的历史数据）">
+            🔄 重置为系统默认设置
+          </button>
+          <button id="btnApplyAIReco" onclick="applyAIRecommendation()"
+                  class="hidden px-3 py-2 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-lg transition-colors text-sm font-medium border border-purple-300"
+                  title="把下方 AI 推荐卡片的起点应用到当前变量勾选/起点（仅训练阶段）">
+            🧠 应用 AI 推荐起点
+          </button>
+        </div>
 
         <!-- SNR变量 -->
         <div id="varSNR" class="mb-5 p-4 bg-blue-50 rounded-xl">
@@ -360,17 +317,88 @@
           </div>
         </div>
 
-        <!-- 试次统计 -->
-        <div class="mt-4 p-3 bg-gray-100 rounded-xl text-sm">
-          <div class="font-medium text-gray-700 mb-1">📋 试次统计：<span id="previewTotal" class="text-primary font-bold">0</span> 个试次</div>
-          <div id="summaryText" class="text-xs text-gray-500"></div>
+        <!-- AI 自适应推荐（仅训练阶段；与"系统默认设置"概念区分清晰） -->
+        <!-- 风格与上方 SNR / 模糊度 / SOA 变量框统一：紫色色块 + 同类输入控件 + 同等字号 -->
+        <div id="aiRecoCard" class="mb-5 p-4 bg-purple-50 rounded-xl border border-purple-200">
+          <div class="flex items-center justify-between mb-2 flex-wrap gap-2">
+            <div class="flex items-center gap-2">
+              <span class="font-bold text-purple-800">🧠 AI 自适应训练（推荐起点）</span>
+              <span id="aiRecoBadge" class="px-2 py-0.5 rounded-full text-xs font-bold bg-purple-600 text-white">基于历史</span>
+            </div>
+            <label class="flex items-center gap-1.5 cursor-pointer select-none" title="手动覆盖：直接编辑下方 AI 推荐的起点参数；不影响上方 SNR/模糊度/SOA 选择">
+              <span class="text-sm text-gray-700">手动覆盖</span>
+              <input type="checkbox" id="aiRecoManualToggle" class="sr-only peer">
+              <div class="relative w-10 h-5 bg-gray-300 peer-checked:bg-amber-500 rounded-full transition-colors">
+                <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
+              </div>
+            </label>
+          </div>
+
+          
+
+          <!-- 该被试的具体策略说明（动态文字） -->
+          <div id="aiRecoDesc" class="text-sm text-purple-900/85 leading-relaxed mb-3 p-2.5 bg-white/70 rounded-lg border border-purple-100">
+            正在加载策略说明 …
+          </div>
+
+          <!-- 推荐起点参数 + 总试次数 -->
+          <div id="aiRecoParams" class="grid grid-cols-2 gap-2 text-sm mb-2">
+            <!-- JS 动态填充：起始 SNR / 起始模糊度 / SOA 起点 / 干扰衰减 -->
+          </div>
+
+          <!-- 总试次数 + 反转上限 -->
+          <div class="flex flex-wrap gap-3 text-sm text-purple-700 items-center mt-2">
+            <span class="text-gray-700">总试次上限：
+              <input type="number" id="aiTotalTrials" value="40" min="5" max="200"
+                     class="w-16 px-2 py-1 border border-purple-300 rounded text-center bg-white text-sm">
+              次
+            </span>
+            <span class="text-gray-700">反转上限：
+              <input type="number" id="aiMaxReversals" value="6" min="2" max="20"
+                     class="w-14 px-2 py-1 border border-purple-300 rounded text-center bg-white text-sm">
+              次
+            </span>
+            <span class="text-xs text-purple-600/80 italic">达到任一上限即终止该功能训练</span>
+          </div>
+
+          <!-- 提示：无评估数据时 -->
+          <div id="aiRecoNoData" class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded p-2.5 mt-2 hidden">
+            ⚠️ 暂无该被试的历史评估数据，使用系统默认起点。完成一次前测后再进入训练，AI 会根据评估结果给出更精准的建议。
+          </div>
+
+          <!-- 操作按钮 -->
+          <div class="flex items-center justify-end gap-2 mt-3">
+            <button id="aiRecoRecompute"
+              class="px-3 py-1.5 text-sm bg-white border border-purple-300 text-purple-700 rounded-lg hover:bg-purple-100">
+              🔄 重新计算
+            </button>
+            <button onclick="applyAIRecommendation()"
+              class="px-3 py-1.5 text-sm bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium shadow-sm"
+              title="把上面的 AI 推荐起点写入到变量勾选；左上角徽章会切换为「🧠 AI 推荐」">
+              ✓ 应用到变量框
+            </button>
+          </div>
         </div>
+
+        <!-- 试次统计的左栏容器（非训练阶段：试次统计 DOM 会被移动到此处） -->
+        <div id="trialSummaryAnchorLeft" class="mt-1"></div>
+        <div class="flex-1"></div>
       </div>
 
-      <!-- 右：预览 + 生成 -->
-      <div class="space-y-4">
-        <!-- 材料预览 -->
+      <!-- 右：保存 + 预览 + 试次统计（顺序：上→下） -->
+      <div id="trialSummaryAnchorRight" class="flex flex-col gap-4 h-full">
+        <!-- 保存 & 生成按钮（移到最上：研究者一进右栏就能看到主操作） -->
         <div class="bg-white rounded-2xl shadow-xl p-6">
+          <h3 class="font-bold text-gray-800 mb-3 flex items-center gap-2"><span>🚀</span> 准备就绪</h3>
+          <div class="grid grid-cols-2 gap-3">
+            <button onclick="saveAdminSettings()" class="px-6 py-4 bg-blue-500 hover:bg-blue-600 text-white text-lg font-bold rounded-xl shadow-lg transition-all col-span-2">
+              💾 保存设置并生成程序
+            </button>
+          </div>
+        </div>
+        <!-- 材料预览 -->
+        <!-- 材料预览（允许 flex-grow 占据剩余高度） -->
+        <div class="bg-white rounded-2xl shadow-xl p-6 flex-1">
           <h3 class="font-bold text-gray-800 mb-3 flex items-center gap-2"><span>👁️</span> 材料预览</h3>
 
           <!-- 功能1预览 -->
@@ -499,13 +527,43 @@
           </div>
         </div>
 
-        <!-- 保存 & 生成按钮 -->
-        <div class="bg-white rounded-2xl shadow-xl p-6">
-          <h3 class="font-bold text-gray-800 mb-3">🚀 准备就绪</h3>
-          <div class="grid grid-cols-2 gap-3">
-            <button onclick="saveAdminSettings()" class="px-6 py-4 bg-blue-500 hover:bg-blue-600 text-white text-lg font-bold rounded-xl shadow-lg transition-all col-span-2">
-              💾 保存设置并生成程序
-            </button>
+        <!-- 试次统计（默认在右栏底部；非训练阶段会通过 JS 移到左栏底部以与 AI 卡片让位） -->
+        <div id="trialSummaryCard" class="bg-white rounded-2xl shadow-xl p-5">
+          <h3 class="font-bold text-gray-800 mb-3 flex items-center gap-2"><span>📋</span> 试次统计</h3>
+
+          <!-- 训练阶段 + AI 模式：AI 自适应训练上限（紫色色系） -->
+          <div id="trialSummaryAI"
+               class="hidden p-4 rounded-xl border bg-gradient-to-r from-purple-50 to-fuchsia-50 border-purple-200">
+            <div class="flex items-baseline flex-wrap gap-2 mb-1">
+              <span class="text-sm font-bold text-purple-700">🧠 AI 自适应训练 · 最多</span>
+              <span id="aiSummaryTrials" class="text-2xl font-bold text-purple-700 leading-none">40</span>
+              <span class="text-sm text-purple-700">次试次 /</span>
+              <span id="aiSummaryReversals" class="text-2xl font-bold text-purple-700 leading-none">6</span>
+              <span class="text-sm text-purple-700">次反转</span>
+            </div>
+            <div class="text-sm text-purple-700/85 mt-1 leading-relaxed">
+              实际试次数由 <b>StaircaseController</b> 阶梯引擎根据被试表现动态决定，达到任一上限即终止。
+            </div>
+          </div>
+
+          <!-- 非 AI 模式：静态预生成数（蓝色色系，与上方 AI 卡同结构） -->
+          <div id="trialSummaryStatic"
+               class="p-4 rounded-xl border bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
+            <div class="flex items-baseline flex-wrap gap-2 mb-1">
+              <span class="text-sm font-bold text-blue-700">📊 系统默认 / 手动设置 · 共生成</span>
+              <span id="previewTotal" class="text-2xl font-bold text-blue-700 leading-none">0</span>
+              <span class="text-sm text-blue-700">个试次</span>
+            </div>
+            <div id="summaryText" class="text-sm text-blue-700/85 mt-1 leading-relaxed"></div>
+          </div>
+
+          <!-- AI 自适应训练上限提示条（仅在某些场景下显示，目前默认隐藏） -->
+          <div id="aiAdaptiveLimitInfo"
+               class="hidden mt-2 p-3 bg-purple-50 border border-purple-200 rounded-xl text-sm text-purple-800 leading-relaxed">
+            <span class="font-bold">AI 自适应训练上限：</span>
+            最多 <b id="aiLimitTrials" class="text-purple-900">40</b> 次
+            或 <b id="aiLimitReversals" class="text-purple-900">6</b> 次反转，
+            <span class="text-purple-700/85">实际由阶梯引擎按表现动态决定，可能更早终止。</span>
           </div>
         </div>
       </div>
@@ -547,6 +605,7 @@
 <script src="config/constants.js"></script>
 <script src="js/uiHelper.js"></script>
 <script src="js/core/Staircase.js"></script>
+<script src="js/core/StaircaseController.js"></script>
 <script src="js/core/EventLogger.js"></script>
 <script src="js/audioProcessor.js"></script>
 <script src="js/psychometric.js"></script>
@@ -564,18 +623,364 @@
   window.DEFAULT_SCREEN = 'menu';
 
   /**
-   * 应用系统推荐配置（从 Config.PRESET_CONFIGS 读取）
-   * 现在由 js/adminSettings.js 中的 AdminSettings.applyDefaultSettings() 实现
-   * 这个包装函数保持向后兼容
+   * 应用系统默认设置（从 Config.PRESET_CONFIGS 读取）
+   * 由 js/adminSettings.js 中的 AdminSettings.applyDefaultSettings() 实现
+   * 此包装函数保持向后兼容并维护"当前模式"徽章
    */
   function applyDefaultSettings() {
     if (typeof AdminSettings !== 'undefined' && typeof AdminSettings.applyDefaultSettings === 'function') {
-      AdminSettings.applyDefaultSettings();
+      // 程序化批量修改 checkbox 期间挡住 manual 监听，避免徽章闪烁切到 manual 再切回 default
+      window._suppressManualWatch = true;
+      try {
+        AdminSettings.applyDefaultSettings();
+      } finally {
+        window._suppressManualWatch = false;
+      }
+      // ★ 用户明确点了"系统默认"→ 关闭训练阶段的"自动应用 AI"，避免用户切 func 后又被覆盖
+      window._aiAutoApplyEnabled = false;
+      // ★ 派发 change 事件让 app.js 内的 updateTrialSummary 重算
+      if (typeof triggerTrialSummaryRefresh === 'function') triggerTrialSummaryRefresh();
+      setVarMode('default');     // ★ 重置后切到「系统默认」模式
+      if (typeof UIHelper !== 'undefined') UIHelper.showNotification('已应用系统默认设置', 'info', 1200);
     } else {
       console.error('[applyDefaultSettings] AdminSettings 未加载');
       alert('系统错误：AdminSettings 未加载，请刷新页面');
     }
   }
+
+  /* ==================== 当前模式徽章（让被试一眼看清自己用的是哪种设置）====================
+   *
+   * 三种模式的明确定义：
+   *   default — 系统默认：来自 Config.PRESET_CONFIGS（统一起点；适合前/后测、首次训练）
+   *   manual  — 手动自定义：研究者修改了任意一个复选框 / 数字 / 顺序按钮
+   *   ai      — AI 推荐：把右下方"AI 自适应推荐"卡片的起点应用到了变量框（仅训练阶段）
+   *
+   * 任何用户在变量区的修改都会自动切到 manual，避免"显示默认 / 实际已被改"的不一致。
+   */
+  const VAR_MODE_META = {
+    default: {
+      label: '📦 系统默认',
+      cls:   'bg-slate-200 text-slate-700',
+      hint:  '📦 <b>系统默认设置</b>：使用 <code class="px-1 bg-white rounded">PRESET_CONFIGS</code> 中预设的统一起点，适合首次测试与前/后测。'
+    },
+    manual: {
+      label: '✏️ 手动自定义',
+      cls:   'bg-amber-200 text-amber-800',
+      hint:  '✏️ <b>手动自定义</b>：你已修改了下方变量勾选/数字，当前配置为研究者自定义版本（点击"重置为系统默认"可恢复）。'
+    },
+    ai: {
+      label: '🧠 AI 推荐',
+      cls:   'bg-purple-200 text-purple-800',
+      hint:  '🧠 <b>AI 自适应推荐</b>：基于该被试历史评估数据生成的训练起点（仅训练阶段；起点 + 训练时由 StaircaseController 动态调难）。'
+    }
+  };
+
+  function setVarMode(mode) {
+    const meta  = VAR_MODE_META[mode] || VAR_MODE_META.default;
+    const badge = document.getElementById('varModeBadge');
+    const hint  = document.getElementById('varModeHint');
+    if (badge) {
+      badge.className = 'px-2.5 py-1 rounded-full text-xs font-bold transition-colors ' + meta.cls;
+      badge.textContent = meta.label;
+    }
+    if (hint) {
+      hint.innerHTML = meta.hint;
+      // hint 颜色随模式细微调整（保持与 badge 同色系）
+      hint.className = 'mb-3 p-2.5 rounded-lg text-xs leading-relaxed border ' + (
+        mode === 'manual' ? 'bg-amber-50 border-amber-200 text-amber-800' :
+        mode === 'ai'     ? 'bg-purple-50 border-purple-200 text-purple-800' :
+                            'bg-slate-50 border-slate-200 text-slate-600'
+      );
+    }
+    window._currentVarMode = mode;
+    // ★ 模式变化（default ↔ manual ↔ ai）时同步刷新试次统计区
+    if (typeof refreshTrialSummaryLayout === 'function') refreshTrialSummaryLayout();
+  }
+
+  /* 监听变量框任意变更 → 自动切到 manual */
+  function watchVarChangesForManualMode() {
+    const root = document.getElementById('screen_prep');
+    if (!root) return;
+
+    // 用 capture 阶段抓所有 input/change，避免被业务回调 stopPropagation
+    const handler = (e) => {
+      // ★ 程序化批量修改 checkbox（应用 AI 推荐 / 应用默认）期间挡住，避免误切到 manual
+      if (window._suppressManualWatch) return;
+      const t = e.target;
+      if (!t) return;
+      // 仅当用户改的是 SNR/模糊度/SOA/注意条件复选框 + 重复次数数字框时才视为「手动自定义」
+      const isVarCtl = (
+        (t.type === 'checkbox' && /(snr-lvl|blur-lvl|soa-lvl|att-lvl)/.test(t.className)) ||
+        (t.id && /^(snrReps|blurReps|soaReps|snrMode)$/.test(t.id))
+      );
+      if (!isVarCtl) return;
+      // 若当前已是 manual，则不重复切；若是 default/ai 因用户编辑 → 切到 manual
+      if (window._currentVarMode !== 'manual') setVarMode('manual');
+    };
+    root.addEventListener('input',  handler, true);
+    root.addEventListener('change', handler, true);
+
+    // setOrder() 等点击按钮改变顺序模式 → 也算手动自定义
+    root.querySelectorAll('[onclick^="setOrder("]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (window._currentVarMode !== 'manual') setVarMode('manual');
+      });
+    });
+  }
+
+  /* 训练阶段才显示 "应用 AI 推荐起点" 按钮 */
+  function refreshAIRecoButtonVisibility() {
+    const btn = document.getElementById('btnApplyAIReco');
+    if (!btn) return;
+    const phase = (typeof STATE !== 'undefined' && STATE.phase) ? STATE.phase : 'train';
+    btn.classList.toggle('hidden', phase !== 'train');
+  }
+
+  /**
+   * 把 AI 推荐卡片中的起点写回到下方变量框
+   * 规则：把推荐的起始 SNR 锁定为唯一选中档；其它功能同理
+   * 不影响重复次数 / 顺序模式（保留研究者已有偏好）
+   */
+  function applyAIRecommendation() {
+    if (typeof window.getAIRecoSnapshot !== 'function') {
+      if (typeof UIHelper !== 'undefined') UIHelper.showNotification('AI 推荐尚未就绪', 'warning');
+      return;
+    }
+    const snap = window.getAIRecoSnapshot();
+    if (!snap || !snap.funcConfig) {
+      if (typeof UIHelper !== 'undefined') UIHelper.showNotification('当前阶段不支持 AI 推荐（仅训练阶段）', 'warning');
+      return;
+    }
+    const fc = snap.funcConfig;
+    const func = snap.func;
+
+    // ★ 程序化修改 checkbox 期间挡住 manual 监听器（避免模式被切到 manual 后再切回 ai 的闪烁）
+    window._suppressManualWatch = true;
+    try {
+      // 1) 起始 SNR → 仅勾选最接近的 SNR 档
+      if (fc.initialSNR != null) {
+        pickClosestCheckbox('snr-lvl', fc.initialSNR);
+      }
+      // 2) 起始模糊度（仅功能 2）
+      if (func === 2 && fc.initialBlur != null) {
+        pickClosestCheckbox('blur-lvl', fc.initialBlur);
+      }
+      // 3) 功能 3：把视觉/听觉领先起点对应的 SOA 档也勾上
+      if (func === 3) {
+        const soaTargets = [];
+        if (fc.visualLeadStart != null) soaTargets.push(-Math.abs(fc.visualLeadStart));  // 视觉领先 → SOA<0
+        if (fc.audioLeadStart  != null) soaTargets.push( Math.abs(fc.audioLeadStart));   // 听觉领先 → SOA>0
+        if (soaTargets.length > 0) pickClosestCheckboxes('soa-lvl', soaTargets);
+      }
+    } finally {
+      window._suppressManualWatch = false;
+    }
+
+    // 触发预览更新 + 试次统计更新
+    if (typeof updatePreview === 'function') updatePreview();
+    triggerTrialSummaryRefresh();   // ★ 派发 change 事件让 app.js 内部的 updateTrialSummary 重算
+
+    setVarMode('ai');     // ★ 切到 AI 模式
+    window._aiAutoApplyEnabled = true;  // ★ 用户明确选择 AI → 重新启用自动应用
+    if (typeof UIHelper !== 'undefined') UIHelper.showNotification('已应用 AI 推荐起点到变量框', 'success');
+  }
+
+  /**
+   * 自动应用 AI 推荐（仅训练阶段）—— 在进入训练阶段、切换功能、首次加载时调用
+   * 跳过条件：
+   *   • 当前不是训练阶段
+   *   • 用户已显式点过"系统默认"或"手动改过变量框"（_aiAutoApplyEnabled=false 或 mode=manual）
+   *   • _aiRecoState.nextConfig 尚未就绪（还没渲染过 AI 卡片）
+   *
+   * 静默模式（不弹通知）— 因为是自动行为，避免每次切 func 都弹一次"已应用..."
+   */
+  function maybeAutoApplyAIIfTraining(silent) {
+    const phase = (typeof STATE !== 'undefined' && STATE.phase) ? STATE.phase : 'train';
+    if (phase !== 'train') return;
+    if (window._aiAutoApplyEnabled === false) return;       // 用户已显式选了系统默认 → 不自动覆盖
+    if (window._currentVarMode === 'manual') return;         // 用户改过变量框 → 不自动覆盖
+    if (typeof window.getAIRecoSnapshot !== 'function') return;
+    const snap = window.getAIRecoSnapshot();
+    if (!snap || !snap.funcConfig) return;
+
+    // 调用 applyAIRecommendation（含程序化勾选 + 试次统计刷新 + 切到 ai 模式）
+    // 但要"静默"：临时屏蔽 UIHelper 通知
+    if (silent && typeof UIHelper !== 'undefined') {
+      const _origNotify = UIHelper.showNotification;
+      UIHelper.showNotification = function () { /* no-op */ };
+      try { applyAIRecommendation(); } finally { UIHelper.showNotification = _origNotify; }
+    } else {
+      applyAIRecommendation();
+    }
+  }
+
+
+  /**
+   * 派发 change 事件给所有变量复选框，让 app.js 内的 updateTrialSummary 重算
+   * 程序化修改 .checked 不会自动触发 change，必须手动 dispatch
+   */
+  function triggerTrialSummaryRefresh() {
+    document.querySelectorAll('.snr-lvl, .blur-lvl, .soa-lvl, .att-lvl')
+      .forEach(b => b.dispatchEvent(new Event('change', { bubbles: true })));
+  }
+
+  /* 工具：在一组复选框中只勾选数值最接近 target 的那个 */
+  function pickClosestCheckbox(cls, target) {
+    const boxes = document.querySelectorAll('.' + cls);
+    if (!boxes.length) return;
+    let best = null, minDiff = Infinity;
+    boxes.forEach(b => {
+      const v = parseFloat(b.value);
+      const d = Math.abs(v - target);
+      if (d < minDiff) { minDiff = d; best = b; }
+    });
+    boxes.forEach(b => { b.checked = (b === best); });
+  }
+
+  /* 工具：在一组复选框中只勾选数值最接近 targets 中任一项的那些 */
+  function pickClosestCheckboxes(cls, targets) {
+    const boxes = document.querySelectorAll('.' + cls);
+    if (!boxes.length) return;
+    const picked = new Set();
+    targets.forEach(t => {
+      let best = null, minDiff = Infinity;
+      boxes.forEach(b => {
+        const v = parseFloat(b.value);
+        const d = Math.abs(v - t);
+        if (d < minDiff) { minDiff = d; best = b; }
+      });
+      if (best) picked.add(best);
+    });
+    boxes.forEach(b => { b.checked = picked.has(b); });
+  }
+
+  // 初始化：DOMContentLoaded 后绑定监听 + 设置初始模式
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initVarModeUI);
+  } else {
+    setTimeout(initVarModeUI, 0);
+  }
+  function initVarModeUI() {
+    // ★ 默认开启"训练阶段自动应用 AI 推荐"；用户点了"系统默认"才会关掉
+    if (typeof window._aiAutoApplyEnabled === 'undefined') window._aiAutoApplyEnabled = true;
+    setVarMode('default');
+    watchVarChangesForManualMode();
+    refreshAIRecoButtonVisibility();
+    refreshAILimitInfo();
+    // 切换 phase 时刷新按钮可见性 + AI 上限说明
+    if (typeof window.selectPhase === 'function') {
+      const _orig = window.selectPhase;
+      window.selectPhase = function (p) {
+        _orig.call(this, p);
+        refreshAIRecoButtonVisibility();
+        refreshAILimitInfo();
+      };
+    }
+    // 监听 aiTotalTrials / aiMaxReversals 输入变化 → 同步到试次统计中的 AI 上限提示 + clamp 防越界
+    const aiNumLimits = {
+      aiTotalTrials:  { min: 5, max: 200 },
+      aiMaxReversals: { min: 2, max: 20  }
+    };
+    Object.keys(aiNumLimits).forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const lim = aiNumLimits[id];
+      el.addEventListener('input', () => {
+        let v = parseInt(el.value, 10);
+        if (isFinite(v)) {
+          if (v < lim.min || v > lim.max) {
+            const c = Math.max(lim.min, Math.min(lim.max, v));
+            el.classList.add('ring-2', 'ring-amber-400');
+            setTimeout(() => el.classList.remove('ring-2', 'ring-amber-400'), 600);
+            el.value = c;
+            if (typeof UIHelper !== 'undefined') {
+              UIHelper.showNotification(`${id} 已限制在 [${lim.min}, ${lim.max}]`, 'warning', 1500);
+            }
+          }
+        }
+        refreshAILimitInfo();
+      });
+    });
+  }
+
+  /**
+   * 试次统计区布局/内容刷新
+   * ------------------------------------------------------------
+   * 三种状态：
+   *   1) 非训练阶段（pre / post）→ 试次统计 DOM 移到「左栏底部」(trialSummaryAnchorLeft)
+   *      显示 trialSummaryStatic，隐藏 trialSummaryAI 与 aiAdaptiveLimitInfo
+   *   2) 训练阶段 + 当前模式 = ai     → 试次统计 DOM 在「右栏底部」(trialSummaryAnchorRight)
+   *      显示 trialSummaryAI（用 AI 上限覆盖），隐藏 trialSummaryStatic 与 aiAdaptiveLimitInfo
+   *   3) 训练阶段 + 其它模式（default / manual）→ 试次统计 DOM 在「右栏底部」
+   *      显示 trialSummaryStatic + aiAdaptiveLimitInfo（提示 AI 上限作为备用信息）
+   */
+  function refreshTrialSummaryLayout() {
+    const card        = document.getElementById('trialSummaryCard');
+    const leftAnchor  = document.getElementById('trialSummaryAnchorLeft');
+    const rightAnchor = document.getElementById('trialSummaryAnchorRight');
+    const aiBox       = document.getElementById('trialSummaryAI');
+    const staticBox   = document.getElementById('trialSummaryStatic');
+    const limitBox    = document.getElementById('aiAdaptiveLimitInfo');
+    if (!card || !leftAnchor || !rightAnchor || !aiBox || !staticBox || !limitBox) return;
+
+    const phase        = (typeof STATE !== 'undefined' && STATE.phase) ? STATE.phase : 'train';
+    const mode         = window._currentVarMode || 'default';
+    const aiCardManual = !!window._aiRecoManual;   // AI 卡内"手动覆盖"开关：仍属 AI 模式
+
+    // 1. DOM 位置：非训练阶段移到左栏；训练阶段移到右栏
+    const targetParent = (phase === 'train') ? rightAnchor : leftAnchor;
+    if (card.parentElement !== targetParent) {
+      targetParent.appendChild(card);
+    }
+    // ★ 在左栏（融入"实验变量设置"大框）→ 去掉白色外卡片样式；
+    //   在右栏（独立卡片）→ 加回白色卡片样式
+    const cardOuterCls = ['bg-white', 'rounded-2xl', 'shadow-xl', 'p-5'];
+    if (targetParent === leftAnchor) {
+      cardOuterCls.forEach(c => card.classList.remove(c));
+      card.classList.add('mt-2');   // 仅留少许上间距，与上方 AI 占位区分隔
+    } else {
+      card.classList.remove('mt-2');
+      cardOuterCls.forEach(c => card.classList.add(c));
+    }
+
+    // 2. 内容：根据 phase × mode 切换；统一原则——仅显示一张卡，不再叠加 AI 上限提示条
+    //    aiAdaptiveLimitInfo 已不再使用（保持永远隐藏，留作向后兼容备用）
+    limitBox.classList.add('hidden');
+
+    if (phase !== 'train') {
+      // 训练前/后：仅静态预生成数
+      aiBox.classList.add('hidden');
+      staticBox.classList.remove('hidden');
+    } else if (mode === 'ai' || aiCardManual) {
+      // 训练阶段 + AI 模式（含 AI 卡内手动覆盖）：仅 AI 紫卡
+      aiBox.classList.remove('hidden');
+      staticBox.classList.add('hidden');
+      syncAILimitNumbers();
+    } else {
+      // 训练阶段 + 系统默认 / 手动自定义（变量框被改）：仅静态预生成数
+      aiBox.classList.add('hidden');
+      staticBox.classList.remove('hidden');
+    }
+  }
+
+  /* 把 AI 卡片中的 totalTrials / maxReversals 数值同步到试次统计区显示 */
+  function syncAILimitNumbers() {
+    const t  = document.getElementById('aiTotalTrials');
+    const r  = document.getElementById('aiMaxReversals');
+    const tT = document.getElementById('aiLimitTrials');
+    const rR = document.getElementById('aiLimitReversals');
+    const aT = document.getElementById('aiSummaryTrials');
+    const aR = document.getElementById('aiSummaryReversals');
+    const tv = (t && t.value) || '40';
+    const rv = (r && r.value) || '6';
+    if (tT) tT.textContent = tv;
+    if (rR) rR.textContent = rv;
+    if (aT) aT.textContent = tv;
+    if (aR) aR.textContent = rv;
+  }
+
+  // 旧名兼容
+  function refreshAILimitInfo() { refreshTrialSummaryLayout(); }
 
   /**
    * 被试编号修改时，同步到 localStorage 和 index 页面
@@ -620,262 +1025,303 @@
     }
   })();
 
-  // ==================== AI 自适应推荐策略面板 ====================
-  // 当前面板状态
-  let _adminPanelState = {
-    strategyMode: 'adaptive',   // 'adaptive' | 'manual'
-    manualOverride: false,
-    nextConfig: null,
-    avis: null
+  // ==================== AI 自适应推荐（按当前选中功能展示） ====================
+  /**
+   * 每个功能的推荐字段元数据 + 阶梯策略简介
+   * 注意：此卡片仅显示推荐起点参数；不再修改下方 SNR/模糊度/SOA 的勾选状态
+   * 真正的难度调节交给 StaircaseController 在训练运行时执行
+   */
+  // 字段合理范围（与 AdaptiveEngine.RANGES 一致；冗余写在前端供输入框 min/max 直接使用）
+  const AI_FIELD_RANGE = {
+    initialSNR:            { min: -9,   max:   9, step: 0.5 },   // SNR 档位 [-9..+9] dB
+    initialBlur:           { min:  0,   max:  20, step: 4   },   // 模糊度档位 [0,4,8,12,16,20]%
+    visualLeadStart:       { min: -300, max:   0, step: 10  },   // 视觉领先 SOA ≤ 0
+    audioLeadStart:        { min:  0,   max: 300, step: 10  },   // 听觉领先 SOA ≥ 0
+    distractorAttenuation: { min: -12,  max:   0, step: 0.5 }    // 干扰衰减 ≤ 0 dB
+  };
+
+  const AI_FUNC_META = {
+    1: {
+      title:     '功能一 · 抗干扰',
+      ladderTip: '阶梯：2-down / 1-up（连续答对 2 题 → SNR -1 dB；答错 1 题 → SNR +1 dB）',
+      fields: [
+        { key: 'initialSNR',  label: '起始 SNR',         unit: 'dB' }
+      ]
+    },
+    2: {
+      title:     '功能二 · 视觉整合',
+      ladderTip: '阶梯：3-down / 1-up（连续答对 3 题 → 模糊度上调 1 档；答错 1 题 → 退回前一档；档位 [0, 4, 8, 12, 16, 20]%）',
+      fields: [
+        { key: 'initialSNR',  label: '固定 SNR',         unit: 'dB' },
+        { key: 'initialBlur', label: '起始模糊度',         unit: '%' }
+      ]
+    },
+    3: {
+      title:     '功能三 · 异步校准',
+      ladderTip: '阶梯：时窗边界两极拉伸（每次随机出题；做对 → 边界 +10 ms 外推；做错 → 边界 -10 ms 内缩）',
+      fields: [
+        { key: 'initialSNR',      label: '固定 SNR',           unit: 'dB' },
+        { key: 'visualLeadStart', label: '视觉领先起点',         unit: 'ms' },
+        { key: 'audioLeadStart',  label: '听觉领先起点',         unit: 'ms' }
+      ]
+    },
+    4: {
+      title:     '功能四 · 注意定位',
+      ladderTip: '阶梯：双轴联动（2-down/1-up 调 SNR；当 SNR 已升至安全上限仍答错 → 干扰源额外 -1 dB 衰减）',
+      fields: [
+        { key: 'initialSNR',            label: '起始 SNR',         unit: 'dB' },
+        { key: 'distractorAttenuation', label: '干扰源衰减',         unit: 'dB' }
+      ]
+    }
+  };
+
+  // 当前 AI 推荐状态（每次切换功能/重算时更新）
+  let _aiRecoState = {
+    func: 1,
+    manual: false,
+    nextConfig: null,    // 整体 nextConfig（4 个功能）
+    hasEval: false
   };
 
   /**
-   * 渲染整个 AI 策略面板
-   * 流程：
-   *   1. 读取当前被试编号
-   *   2. 从 DataManager 聚合最近 active 评估结果
-   *   3. 调 AdaptiveEngine.generateNextConfig 生成下次配置
-   *   4. 调 AdaptiveEngine.calculateCognitiveScore 算 AVIS
-   *   5. 渲染参数表单与 AVIS 卡片
+   * 渲染 AI 推荐卡片（针对当前选中的 STATE.func）
    */
-  function renderAdminPanel() {
+  function renderFunctionAIRecommendation() {
     if (typeof AdaptiveEngine === 'undefined') return;
+    const card = document.getElementById('aiRecoCard');
+    if (!card) return;
 
-    const subjectInput = document.getElementById('subjectId');
-    const userId = subjectInput && subjectInput.value ? subjectInput.value.trim() : '';
-
-    document.getElementById('strategySubject').textContent = userId || '（未选择被试）';
-    document.getElementById('strategyVersion').textContent = 'v' + AdaptiveEngine.VERSION;
-
-    if (!userId) {
-      document.getElementById('strategyUpdatedAt').textContent = '请先输入被试编号';
-      document.getElementById('strategyParamsForm').innerHTML =
-        '<div class="col-span-2 text-center text-gray-400 py-6">填写被试编号后将显示该被试的推荐配置</div>';
+    // ★ 仅在「训练阶段」显示 AI 推荐：训练前/后测试不需要自适应难度
+    const phase = (typeof STATE !== 'undefined' && STATE.phase) ? STATE.phase : 'train';
+    if (phase !== 'train') {
+      card.classList.add('hidden');
       return;
     }
+    card.classList.remove('hidden');
 
-    // 1) 聚合评估
-    const evalResults = AdaptiveEngine.collectLatestEval(userId);
+    const func = (typeof STATE !== 'undefined' && STATE.func) ? STATE.func : 1;
+    _aiRecoState.func = func;
+    const meta = AI_FUNC_META[func];
+    if (!meta) return;
+
+    // 1) 取被试ID + 历史评估
+    const subjectInput = document.getElementById('subjectId');
+    const userId = subjectInput && subjectInput.value ? subjectInput.value.trim() : '';
+    const evalResults = userId ? AdaptiveEngine.collectLatestEval(userId) : {};
     const hasAnyEval = ['func1','func2','func3','func4'].some(k => evalResults[k]);
+    _aiRecoState.hasEval = hasAnyEval;
+    _aiRecoState.nextConfig = AdaptiveEngine.generateNextConfig(evalResults);
 
-    // 2) 生成下次配置（即使无评估也用 fallback 默认值）
-    _adminPanelState.nextConfig = AdaptiveEngine.generateNextConfig(evalResults);
+    // 2) 渲染：策略说明文字（包含该被试的具体阈值与推导）
+    document.getElementById('aiRecoDesc').innerHTML = buildStrategyDescription(func, evalResults, _aiRecoState.nextConfig);
 
-    // 3) AVIS
-    _adminPanelState.avis = AdaptiveEngine.calculateCognitiveScore(evalResults);
-    renderAVISCard(_adminPanelState.avis, hasAnyEval);
+    // 3) 渲染推荐起点参数
+    renderAIRecoFields(func, _aiRecoState.manual);
 
-    // 4) 时间戳：用最新一条历史记录的时间
-    let latestTs = '';
-    try {
-      const allData = DataManager.getAllData()
-        .filter(d => d.metadata.subjectId === userId && (d.status === 'active' || !d.status));
-      if (allData.length > 0) {
-        allData.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-        latestTs = new Date(allData[0].timestamp).toLocaleString('zh-CN');
+    // 4) "无评估" 提示
+    const noDataEl = document.getElementById('aiRecoNoData');
+    if (noDataEl) noDataEl.classList.toggle('hidden', hasAnyEval);
+  }
+
+  /**
+   * 生成"该被试的具体策略说明"文字（HTML）
+   * 显示当前依据的评估值 → 推导出的起点
+   */
+  function buildStrategyDescription(func, evalResults, nextCfg) {
+    const cfg = (nextCfg && nextCfg['func' + func]) || {};
+    const fmt = (v, unit) => (v == null || isNaN(v) ? '<span class="text-gray-400">--</span>' : `<b>${typeof v === 'number' ? v.toFixed(1) : v}${unit || ''}</b>`);
+    const meta = AI_FUNC_META[func];
+
+    let body = '';
+    if (func === 1) {
+      const t = evalResults.func1 && evalResults.func1.threshold;
+      body = `本次依据：上次评估的<b>噪音阈值</b> ${fmt(t, ' dB')}（前测心理物理拟合 SNR @ 75% 正确率点）。`
+           + `<br/>策略：起始 SNR = 阈值 + 2 dB = ${fmt(cfg.initialSNR, ' dB')}（让首批试次正确率约 90%，热身后由阶梯逐步加难）。`;
+    } else if (func === 2) {
+      const tc = evalResults.func2 && evalResults.func2.fitClear && evalResults.func2.fitClear.threshold;
+      const g  = evalResults.func2 && evalResults.func2.gain;
+      let blurReason = '';
+      if (g != null) {
+        if (g > 3.0)        blurReason = '增益 > 3 dB（视觉代偿强）→ 起步模糊度 4%';
+        else if (g >= 1.5)  blurReason = '1.5 ≤ 增益 ≤ 3 dB（中等代偿）→ 起步模糊度 8%';
+        else                blurReason = '增益 < 1.5 dB（代偿弱）→ 从清晰画面起步 0%';
       }
-    } catch (e) {}
-    document.getElementById('strategyUpdatedAt').textContent = latestTs || new Date().toLocaleString('zh-CN');
-
-    // 5) 渲染参数表单
-    renderStrategyForm(_adminPanelState.nextConfig, _adminPanelState.manualOverride);
-  }
-
-  function renderAVISCard(avis, hasEval) {
-    if (!avis) return;
-    const tip = hasEval ? '' : ' <span class="text-xs text-gray-400">(暂无评估数据，使用默认估计)</span>';
-    document.getElementById('avisTotalScore').innerHTML   = avis.total + ' <span class="text-sm text-gray-400">/100</span>';
-    document.getElementById('avisAuditory').textContent   = avis.auditory;
-    document.getElementById('avisVisual').textContent     = avis.visual;
-    document.getElementById('avisIntegration').textContent = avis.integration;
-    document.getElementById('avisAttention').textContent  = avis.attention;
-    const panel = document.getElementById('avisScorePanel');
-    if (panel && tip) {
-      const title = panel.querySelector('span.text-sm');
-      if (title) title.innerHTML = '📊 综合认知指数 AVIS' + tip;
+      body = `本次依据：清晰口型阈值 ${fmt(tc, ' dB')}、视觉增益 ${fmt(g, ' dB')}。`
+           + `<br/>策略：固定 SNR = 清晰阈值 + 1 dB = ${fmt(cfg.initialSNR, ' dB')}（冻结听觉难度，单独训练视觉整合）；`
+           + `<br/>${blurReason} → 起始模糊度 = ${fmt(cfg.initialBlur, '%')}。`;
+    } else if (func === 3) {
+      const t1   = evalResults.func1 && evalResults.func1.threshold;
+      const lo   = evalResults.func3 && evalResults.func3.lowerSOA;
+      const hi   = evalResults.func3 && evalResults.func3.upperSOA;
+      body = `本次依据：功能一阈值 ${fmt(t1, ' dB')}；功能三时窗边界 ${fmt(lo, ' ms')} ~ ${fmt(hi, ' ms')}。`
+           + `<br/>策略：固定 SNR = 功能一阈值 + 1 dB = ${fmt(cfg.initialSNR, ' dB')}（确保声音可清晰感知）；`
+           + `<br/>视觉领先起点 = lowerSOA + 30 = ${fmt(cfg.visualLeadStart, ' ms')}；听觉领先起点 = upperSOA - 20 = ${fmt(cfg.audioLeadStart, ' ms')}（从窗内向外推）。`;
+    } else if (func === 4) {
+      const dt = evalResults.func4 && evalResults.func4.dualThreshold;
+      const c  = evalResults.func4 && evalResults.func4.cost;
+      const distHint = (c != null && c > 3.0)
+        ? `成本 > 3 dB（抗分心较弱）→ 启用 -3 dB 干扰衰减提供辅助`
+        : `成本 ≤ 3 dB → 干扰源原始音量（不衰减）`;
+      body = `本次依据：双任务阈值 ${fmt(dt, ' dB')}、干扰抑制成本 ${fmt(c, ' dB')}。`
+           + `<br/>策略：起始 SNR = 双任务阈值 + 1.5 dB = ${fmt(cfg.initialSNR, ' dB')}；`
+           + `<br/>${distHint} → 干扰源衰减 = ${fmt(cfg.distractorAttenuation, ' dB')}。`;
     }
+
+    return `<div class="font-semibold text-purple-700 mb-1">${meta.title}</div>`
+         + body
+         + `<div class="mt-2 pt-2 border-t border-purple-100/70 text-xs text-purple-700">${meta.ladderTip}</div>`;
   }
 
-  function renderStrategyForm(cfg, editable) {
-    const form = document.getElementById('strategyParamsForm');
-    if (!form || !cfg) return;
+  function renderAIRecoFields(func, editable) {
+    const params = document.getElementById('aiRecoParams');
+    const meta   = AI_FUNC_META[func];
+    if (!params || !meta) return;
 
-    const funcMeta = [
-      { id: 1, name: '功能一 · 抗干扰',
-        cardCls: 'border-blue-200 bg-blue-50/40',
-        titleCls: 'text-blue-700', dotCls: 'bg-blue-500', valCls: 'text-blue-600',
-        fields: [
-          { key: 'initialSNR', label: '初始 SNR (dB)', step: 0.5 },
-          { key: 'repetitions', label: '每条件重复次数', step: 1, type: 'int' }
-      ]},
-      { id: 2, name: '功能二 · 视觉整合',
-        cardCls: 'border-purple-200 bg-purple-50/40',
-        titleCls: 'text-purple-700', dotCls: 'bg-purple-500', valCls: 'text-purple-600',
-        fields: [
-          { key: 'initialSNR',  label: '固定 SNR (dB)',   step: 0.5 },
-          { key: 'initialBlur', label: '初始模糊度 (%)',  step: 1, type: 'int' },
-          { key: 'repetitions', label: '每条件重复次数',   step: 1, type: 'int' }
-      ]},
-      { id: 3, name: '功能三 · 异步校准',
-        cardCls: 'border-orange-200 bg-orange-50/40',
-        titleCls: 'text-orange-700', dotCls: 'bg-orange-500', valCls: 'text-orange-600',
-        fields: [
-          { key: 'initialSNR',      label: '固定 SNR (dB)',           step: 0.5 },
-          { key: 'visualLeadStart', label: '视觉领先起点 (ms)',       step: 5, type: 'int' },
-          { key: 'audioLeadStart',  label: '听觉领先起点 (ms)',       step: 5, type: 'int' },
-          { key: 'repetitions',     label: '每条件重复次数',           step: 1, type: 'int' }
-      ]},
-      { id: 4, name: '功能四 · 注意定位',
-        cardCls: 'border-red-200 bg-red-50/40',
-        titleCls: 'text-red-700', dotCls: 'bg-red-500', valCls: 'text-red-600',
-        fields: [
-          { key: 'initialSNR',            label: '初始 SNR (dB)',         step: 0.5 },
-          { key: 'distractorAttenuation', label: '干扰源衰减 (dB)',       step: 0.5 },
-          { key: 'repetitions',           label: '每条件重复次数',         step: 1, type: 'int' }
-      ]}
-    ];
+    const fc = (_aiRecoState.nextConfig && _aiRecoState.nextConfig['func' + func]) || {};
 
-    form.innerHTML = funcMeta.map(meta => {
-      const fc = cfg['func' + meta.id] || {};
-      const rows = meta.fields.map(f => {
-        const val = fc[f.key];
-        const display = (val == null) ? '--' : val;
-        const inputStep = f.step || 0.1;
-        if (editable) {
-          return `<div class="flex items-center justify-between gap-2 py-1">
-            <span class="text-gray-600">${f.label}</span>
-            <input type="number" step="${inputStep}"
-                   value="${display === '--' ? '' : display}"
-                   data-func="${meta.id}" data-key="${f.key}"
-                   class="strategy-input w-24 px-2 py-1 border border-gray-300 rounded text-right text-sm">
-          </div>`;
-        }
-        return `<div class="flex items-center justify-between py-1">
-          <span class="text-gray-600">${f.label}</span>
-          <span class="font-mono font-bold ${meta.valCls}">${display}</span>
-        </div>`;
-      }).join('');
-
-      return `
-        <div class="rounded-lg border ${meta.cardCls} p-3">
-          <div class="font-bold ${meta.titleCls} mb-2 flex items-center gap-2">
-            <span class="w-2 h-2 rounded-full ${meta.dotCls}"></span>
-            ${meta.name}
+    params.innerHTML = meta.fields.map(f => {
+      const val = fc[f.key];
+      const display = (val == null || isNaN(val)) ? '--' : (typeof val === 'number' ? val.toFixed(1) : val);
+      const rng = AI_FIELD_RANGE[f.key] || { min: -Infinity, max: Infinity, step: 0.5 };
+      const rngText = (isFinite(rng.min) && isFinite(rng.max)) ? `[${rng.min} ~ ${rng.max}${f.unit}]` : '';
+      if (editable) {
+        return `<div class="flex items-center justify-between gap-2 py-2 px-2.5 bg-white rounded-lg border border-purple-200">
+          <div class="flex flex-col">
+            <span class="text-gray-700 text-sm">${f.label}</span>
+            <span class="text-xs text-gray-400">范围 ${rngText}</span>
           </div>
-          ${rows}
-        </div>
-      `;
-    }).join('');
-  }
-
-  /**
-   * 手动覆盖开关 — 切换表单为可编辑/只读
-   */
-  function setupManualToggle() {
-    const toggle = document.getElementById('manualOverrideToggle');
-    if (!toggle) return;
-    toggle.addEventListener('change', function () {
-      _adminPanelState.manualOverride = this.checked;
-      _adminPanelState.strategyMode = this.checked ? 'manual' : 'adaptive';
-      // 更新 UI 状态
-      document.getElementById('strategyModeBadge').textContent =
-        this.checked ? '🔧 手动覆盖模式' : 'AI 自适应推荐';
-      document.getElementById('strategyModeBadge').className =
-        this.checked
-          ? 'px-3 py-1 rounded-full text-xs font-bold bg-amber-500 text-white'
-          : 'px-3 py-1 rounded-full text-xs font-bold bg-purple-600 text-white';
-      document.getElementById('strategyModeText').textContent =
-        this.checked ? '🔧 手动覆盖模式' : 'AI 自适应推荐模式';
-      document.getElementById('strategyModeText').className =
-        this.checked ? 'text-amber-700' : 'text-purple-700';
-      document.getElementById('saveStrategyBtn').classList.toggle('hidden', !this.checked);
-      // 重新渲染表单
-      renderStrategyForm(_adminPanelState.nextConfig, this.checked);
-    });
-  }
-
-  /**
-   * 重新计算（重新读评估、重生成）
-   */
-  window.recomputeAdaptive = function () {
-    renderAdminPanel();
-    if (typeof UIHelper !== 'undefined') UIHelper.showNotification('已重新计算策略', 'success', 1500);
-  };
-
-  /**
-   * 手动覆盖模式下：把表单值收集回 nextConfig 并保存
-   */
-  window.saveStrategyManually = function () {
-    if (!_adminPanelState.nextConfig) return;
-    const inputs = document.querySelectorAll('.strategy-input');
-    inputs.forEach(inp => {
-      const f = parseInt(inp.dataset.func, 10);
-      const k = inp.dataset.key;
-      const v = parseFloat(inp.value);
-      if (isFinite(v) && _adminPanelState.nextConfig['func' + f]) {
-        _adminPanelState.nextConfig['func' + f][k] = v;
+          <div class="flex items-center gap-1">
+            <input type="number" step="${rng.step}" min="${rng.min}" max="${rng.max}"
+                   value="${display === '--' ? '' : display}"
+                   data-key="${f.key}"
+                   title="允许范围：${rngText}"
+                   class="ai-reco-input w-16 px-2 py-1 border border-gray-300 rounded text-right text-sm">
+            <span class="text-xs text-gray-500">${f.unit}</span>
+          </div>
+        </div>`;
       }
+      return `<div class="flex items-center justify-between py-2 px-2.5 bg-white rounded-lg border border-purple-100"
+                   title="允许范围：${rngText}">
+        <span class="text-gray-700 text-sm">${f.label}</span>
+        <span class="font-mono font-bold text-purple-700 text-sm">${display}<span class="text-xs text-gray-500 ml-1">${f.unit}</span></span>
+      </div>`;
+    }).join('');
+
+    // 手动模式下：监听输入实时回写到 _aiRecoState.nextConfig（供 StaircaseController 启动时读取）
+    // ★ 输入超出合理范围时自动 clamp 到边界，并给出短暂高亮提示
+    if (editable) {
+      params.querySelectorAll('.ai-reco-input').forEach(inp => {
+        const k   = inp.dataset.key;
+        const rng = AI_FIELD_RANGE[k] || { min: -Infinity, max: Infinity };
+
+        const handler = () => {
+          let v = parseFloat(inp.value);
+          if (!isFinite(v)) return;
+          let clamped = v;
+          if (v < rng.min) clamped = rng.min;
+          if (v > rng.max) clamped = rng.max;
+          if (clamped !== v) {
+            // 视觉高亮：触发 amber 闪烁，0.6s 后恢复
+            inp.classList.add('ring-2', 'ring-amber-400');
+            setTimeout(() => inp.classList.remove('ring-2', 'ring-amber-400'), 600);
+            if (typeof UIHelper !== 'undefined') {
+              UIHelper.showNotification(`${k} 已超出范围 [${rng.min}, ${rng.max}]，自动调整到 ${clamped}`, 'warning', 1800);
+            }
+          }
+          // 写回 input 数值（避免显示和实际不一致）+ 状态对象
+          if (clamped !== parseFloat(inp.value)) inp.value = clamped;
+          if (_aiRecoState.nextConfig && _aiRecoState.nextConfig['func' + func]) {
+            _aiRecoState.nextConfig['func' + func][k] = clamped;
+          }
+        };
+        inp.addEventListener('input',  handler);
+        inp.addEventListener('change', handler);   // 失焦后再补一次 clamp（防止用户输完没失焦就被 input 拦了）
+      });
+    }
+  }
+
+  /* 绑定开关 + 按钮 */
+  (function setupAIReco() {
+    const card = document.getElementById('aiRecoCard');
+    if (!card) return;
+
+    // 手动覆盖开关（注意：这是"AI 卡片内"的手动 — 仅编辑 AI 起点参数，仍属于 AI 模式语义）
+    const tog = document.getElementById('aiRecoManualToggle');
+    if (tog) tog.addEventListener('change', function () {
+      _aiRecoState.manual = this.checked;
+      window._aiRecoManual = this.checked;   // ★ 暴露给 refreshTrialSummaryLayout 判断
+      const badge = document.getElementById('aiRecoBadge');
+      if (badge) {
+        badge.textContent = this.checked ? '✏️ 已手编' : '基于历史';
+        badge.className = this.checked
+          ? 'px-2 py-0.5 rounded-full text-xs font-bold bg-amber-500 text-white'
+          : 'px-2 py-0.5 rounded-full text-xs font-bold bg-purple-600 text-white';
+      }
+      renderAIRecoFields(_aiRecoState.func, this.checked);
+      // ★ AI 卡内手动覆盖切换 → 试次统计区刷新（应继续显示 AI 紫卡）
+      if (typeof refreshTrialSummaryLayout === 'function') refreshTrialSummaryLayout();
     });
 
-    const subjectInput = document.getElementById('subjectId');
-    const userId = subjectInput && subjectInput.value ? subjectInput.value.trim() : '';
-    if (!userId) {
-      if (typeof UIHelper !== 'undefined') UIHelper.showNotification('请先填写被试编号', 'warning');
-      return;
-    }
+    // 重新计算
+    const recomputeBtn = document.getElementById('aiRecoRecompute');
+    if (recomputeBtn) recomputeBtn.addEventListener('click', () => {
+      renderFunctionAIRecommendation();
+      if (typeof UIHelper !== 'undefined') UIHelper.showNotification('已重新计算推荐', 'success', 1200);
+    });
 
-    // 用手动覆盖后的 cfg 直接保存（绕过 AdaptiveEngine.saveNextSessionSettings 内部的 generateNextConfig）
-    const cfg = _adminPanelState.nextConfig;
-    const evalSnapshot = _adminPanelState.avis && _adminPanelState.avis.raw;
+    // 监听被试编号变化
+    const subj = document.getElementById('subjectId');
+    if (subj) subj.addEventListener('change', renderFunctionAIRecommendation);
 
-    const settingsJson = {
-      userId: userId,
-      updatedAt: new Date().toISOString(),
-      version: AdaptiveEngine.VERSION,
-      strategyMode: 'manual',
-      evalSnapshot: evalSnapshot,
-      func1: cfg.func1, func2: cfg.func2, func3: cfg.func3, func4: cfg.func4
+    // ★ 暴露给 app.js：在训练开始前读取当前 AI 配置（含起始难度 + 总试次数 + 反转上限）
+    window.getAIRecoSnapshot = function () {
+      const phase = (typeof STATE !== 'undefined' && STATE.phase) ? STATE.phase : 'train';
+      // 仅训练阶段启用自适应；其它阶段返回 null
+      if (phase !== 'train') return null;
+
+      const totalTrialsEl  = document.getElementById('aiTotalTrials');
+      const maxReversalsEl = document.getElementById('aiMaxReversals');
+      const totalTrials  = totalTrialsEl  ? parseInt(totalTrialsEl.value, 10)  : 40;
+      const maxReversals = maxReversalsEl ? parseInt(maxReversalsEl.value, 10) : 6;
+
+      return {
+        func:         _aiRecoState.func,
+        strategyMode: _aiRecoState.manual ? 'manual' : 'adaptive',
+        totalTrials:  isFinite(totalTrials)  && totalTrials  > 0 ? totalTrials  : 40,
+        maxReversals: isFinite(maxReversals) && maxReversals > 0 ? maxReversals : 6,
+        nextConfig:   _aiRecoState.nextConfig,
+        funcConfig:   _aiRecoState.nextConfig && _aiRecoState.nextConfig['func' + _aiRecoState.func]
+      };
     };
 
-    try {
-      localStorage.setItem('avis_next_settings_' + userId, JSON.stringify(settingsJson));
-      // 通过 AdminSettings 同步到 config/settings/ 目录
-      if (typeof AdminSettings !== 'undefined' && AdminSettings.saveSettings) {
-        const gender = (typeof STATE !== 'undefined' && STATE.gender) ? STATE.gender : '';
-        const age    = (typeof STATE !== 'undefined' && STATE.age)    ? STATE.age    : '';
-        for (let f = 1; f <= 4; f++) {
-          const moduleConfig = cfg['func' + f] || {};
-          const preset = AdminSettings.getPresetSettings(f, 'train');
-          const merged = Object.assign({}, preset, {
-            func: f, phase: 'train',
-            snrLevels:   moduleConfig.snrLevels   || preset.snrLevels,
-            blurLevels:  moduleConfig.blurLevels  || preset.blurLevels,
-            soaLevels:   moduleConfig.soaLevels   || preset.soaLevels,
-            attLevels:   moduleConfig.attLevels   || preset.attLevels,
-            repetitions: moduleConfig.repetitions || preset.repetitions,
-            snrMode:     moduleConfig.snrMode     || preset.snrMode,
-            _aiMeta: { generatedAt: settingsJson.updatedAt, strategyMode: 'manual',
-              initialSNR: moduleConfig.initialSNR, initialBlur: moduleConfig.initialBlur,
-              visualLeadStart: moduleConfig.visualLeadStart, audioLeadStart: moduleConfig.audioLeadStart,
-              distractorAttenuation: moduleConfig.distractorAttenuation }
-          });
-          AdminSettings.saveSettings(userId, 'train', f, merged, gender, age);
-        }
-      }
-      if (typeof UIHelper !== 'undefined') UIHelper.showNotification('✅ 手动配置已保存', 'success');
-    } catch (e) {
-      console.error('[saveStrategyManually] 保存失败', e);
-      if (typeof UIHelper !== 'undefined') UIHelper.showNotification('保存失败：' + e.message, 'error');
+    // 拦截 selectFunc 调用，切换功能时刷新推荐 + 训练阶段自动应用 AI
+    if (typeof window !== 'undefined' && typeof window.selectFunc === 'function') {
+      const _origSelectFunc = window.selectFunc;
+      window.selectFunc = function (f) {
+        _origSelectFunc.call(this, f);
+        renderFunctionAIRecommendation();
+        // ★ 训练阶段切换功能 → 自动应用新功能的 AI 推荐起点（静默；不弹通知）
+        maybeAutoApplyAIIfTraining(true);
+      };
     }
-  };
 
-  // 监听被试编号变化 → 重渲染面板
-  (function () {
-    const subj = document.getElementById('subjectId');
-    if (subj) subj.addEventListener('change', renderAdminPanel);
-    setupManualToggle();
-    // 初次渲染（稍延迟以确保 AdminSettings/DataManager 已就绪）
-    setTimeout(renderAdminPanel, 200);
+    // 拦截 selectPhase：训练前/后切换时也要刷新（决定卡片显隐）+ 训练阶段自动应用 AI
+    if (typeof window !== 'undefined' && typeof window.selectPhase === 'function') {
+      const _origSelectPhase = window.selectPhase;
+      window.selectPhase = function (p) {
+        _origSelectPhase.call(this, p);
+        renderFunctionAIRecommendation();
+        // ★ 切换到训练阶段 → 自动应用 AI 推荐起点（静默）
+        if (p === 'train') maybeAutoApplyAIIfTraining(true);
+      };
+    }
+
+    // 初次渲染（稍延迟以确保 AdminSettings/DataManager/STATE 已就绪）
+    // ★ 首次进入页面若默认就是训练阶段 → 自动应用 AI 推荐
+    setTimeout(() => {
+      renderFunctionAIRecommendation();
+      maybeAutoApplyAIIfTraining(true);
+    }, 200);
   })();
 </script>
 

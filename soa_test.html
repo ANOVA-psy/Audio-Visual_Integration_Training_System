@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SOA 同步性测试</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; }
+  .soa-btn {
+    padding: 14px 8px;
+    border-radius: 12px;
+    font-weight: 700;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.15s;
+    border: 2px solid transparent;
+    color: #fff;
+  }
+  .soa-btn:hover  { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(0,0,0,.18); }
+  .soa-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
+  .soa-btn.visual  { background: linear-gradient(135deg, #3b82f6, #2563eb); }
+  .soa-btn.audio   { background: linear-gradient(135deg, #ef4444, #b91c1c); }
+  .soa-btn.sync    { background: linear-gradient(135deg, #10b981, #059669); }
+  .soa-info-row { font-family: ui-monospace, "Cascadia Code", monospace; font-size: 12px; }
+  .pulse {
+    animation: pulse 0.6s ease-out;
+  }
+  @keyframes pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(59,130,246,0.7); }
+    100% { box-shadow: 0 0 0 18px rgba(59,130,246,0); }
+  }
+</style>
+</head>
+<body class="bg-slate-100 min-h-screen py-8">
+<div class="container mx-auto px-4 max-w-3xl">
+
+  <div class="bg-white rounded-2xl shadow-xl p-6">
+    <h1 class="text-2xl font-bold text-gray-800 mb-1">🎯 SOA 同步性独立测试</h1>
+    <p class="text-sm text-gray-500 mb-4">
+      用于检查"SOA 正负与音画先后"是否符合心理物理学约定：<br/>
+      <span class="text-red-600 font-bold">SOA &gt; 0 → 听觉领先</span>（声音先到，画面后到）；
+      <span class="text-blue-600 font-bold">SOA &lt; 0 → 视觉领先</span>（画面先到，声音后到）。
+    </p>
+
+    <!-- 视频 + 音画到达指示 -->
+    <div class="relative rounded-xl overflow-hidden bg-gray-900 mx-auto mb-4" style="aspect-ratio: 16/9; max-width: 100%;">
+      <video id="testVideo" class="w-full h-full object-cover" muted playsinline preload="auto">
+        <source id="testVideoSrc" src="assets/video/M8_ba.mp4" type="video/mp4">
+      </video>
+
+      <!-- 音频/视频起播闪光指示 -->
+      <div id="audioFlash" class="absolute top-3 left-3 px-3 py-1 rounded-lg text-xs font-bold text-white bg-red-600 opacity-0 transition-opacity">
+        🔊 AUDIO
+      </div>
+      <div id="videoFlash" class="absolute top-3 right-3 px-3 py-1 rounded-lg text-xs font-bold text-white bg-blue-600 opacity-0 transition-opacity">
+        👁 VIDEO
+      </div>
+    </div>
+
+    <!-- 素材选择 -->
+    <div class="flex items-center justify-between gap-3 mb-4">
+      <label class="text-sm text-gray-600 flex items-center gap-2">
+        素材：
+        <select id="matSelect" class="px-3 py-1.5 border border-gray-300 rounded-lg text-sm">
+          <option value="ba">/ba/</option>
+          <option value="da">/da/</option>
+          <option value="ga">/ga/</option>
+        </select>
+      </label>
+      <div class="flex gap-2">
+        <button id="warmupBtn" class="px-3 py-1.5 text-sm bg-purple-500 text-white rounded-lg hover:bg-purple-600" title="一次性解码全部素材，让后续点击零延迟">
+          🔥 预热全部素材
+        </button>
+        <button id="stopBtn" class="px-3 py-1.5 text-sm bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">⏹ 停止</button>
+      </div>
+    </div>
+
+    <!-- SOA 按钮 4 行 -->
+    <div class="space-y-2 mb-4">
+      <div class="text-xs font-semibold text-gray-500 mb-1">点击按钮即播放，每个按钮对应一个 SOA：</div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <button class="soa-btn visual" data-soa="-2000">视觉领先 -2000 ms<br/><span class="text-[11px] opacity-90 font-normal">(画面先 2 秒)</span></button>
+        <button class="soa-btn visual" data-soa="-1000">视觉领先 -1000 ms<br/><span class="text-[11px] opacity-90 font-normal">(画面先 1 秒)</span></button>
+      </div>
+
+      <div class="grid grid-cols-1 gap-3">
+        <button class="soa-btn sync" data-soa="0">同步 0 ms<br/><span class="text-[11px] opacity-90 font-normal">(音画同时)</span></button>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <button class="soa-btn audio" data-soa="1000">听觉领先 +1000 ms<br/><span class="text-[11px] opacity-90 font-normal">(声音先 1 秒)</span></button>
+        <button class="soa-btn audio" data-soa="2000">听觉领先 +2000 ms<br/><span class="text-[11px] opacity-90 font-normal">(声音先 2 秒)</span></button>
+      </div>
+    </div>
+
+    <!-- 实时调度信息 -->
+    <div class="rounded-xl bg-gray-900 text-green-300 p-4 mb-4">
+      <div class="text-xs text-green-500 mb-1">📋 调度信息</div>
+      <div id="logBox" class="space-y-1 max-h-48 overflow-y-auto soa-info-row leading-relaxed">
+        <div class="text-gray-500">点击上方按钮开始测试 …</div>
+      </div>
+    </div>
+
+    <!-- 验证小贴士 -->
+    <details class="bg-blue-50 rounded-xl p-3 text-sm">
+      <summary class="font-semibold text-blue-700 cursor-pointer">📖 怎么验证？</summary>
+      <div class="mt-2 text-blue-900 space-y-1.5 text-xs leading-relaxed">
+        <div>1. 选 <strong>视觉领先 -2000 ms</strong>：你应该<strong>先看到口型动</strong>（左上角"AUDIO"标签<strong>不亮</strong>），过 2 秒后<strong>右上角"VIDEO"标签</strong>已经亮过、口型已经走完了；接着<strong>才听到"ba"声音</strong>，并伴随<strong>左上角"AUDIO"</strong>闪光。</div>
+        <div>2. 选 <strong>听觉领先 +2000 ms</strong>：你应该<strong>先听到"ba"声音</strong>（左上角"AUDIO"标签先亮），约 2 秒后才能<strong>看到口型动</strong>（右上角"VIDEO"标签亮）。</div>
+        <div>3. 选 <strong>同步 0 ms</strong>：声音和口型同时出现，左右两个标签同时闪。</div>
+        <div>4. 控制台（F12）也会打印 <code>[SOA]</code> 调度日志，可对照 <code>diff_ms</code>（音频与视频起播时差）确认。</div>
+      </div>
+    </details>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+ * 极简 SOA 测试播放器（带详细调试 + 音频元素 fallback）
+ *
+ * SOA 约定：
+ *   soa > 0  → 听觉领先：音频先响，soa ms 后视频画面才出现
+ *   soa < 0  → 视觉领先：视频画面先动，|soa| ms 后才有声音
+ *   soa = 0  → 同步
+ * ============================================================ */
+const MATERIALS = {
+  ba: { video: 'assets/video/M8_ba.mp4', audio: 'assets/audio/M8_ba_A.mp4' },
+  da: { video: 'assets/video/M8_da.mp4', audio: 'assets/audio/M8_da_A.mp4' },
+  ga: { video: 'assets/video/M8_ga.mp4', audio: 'assets/audio/M8_ga_A.mp4' }
+};
+
+let audioCtx = null;
+const _bufferCache = {};
+let _currentSource = null;     // 当前 BufferSource（可停止）
+let _currentAudioEl = null;    // 当前 <audio> 元素（fallback）
+let _videoTimer = null;
+let _audioTimer = null;
+let _audioFallbackMode = false; // true 表示用 <audio> 元素而非 BufferSource
+
+const video       = document.getElementById('testVideo');
+const videoSrc    = document.getElementById('testVideoSrc');
+const matSelect   = document.getElementById('matSelect');
+const audioFlash  = document.getElementById('audioFlash');
+const videoFlash  = document.getElementById('videoFlash');
+const logBox      = document.getElementById('logBox');
+const stopBtn     = document.getElementById('stopBtn');
+
+function log(html, color) {
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  if (color) div.style.color = color;
+  logBox.insertBefore(div, logBox.firstChild);
+  while (logBox.children.length > 50) logBox.removeChild(logBox.lastChild);
+}
+
+function flash(el, ms = 450) {
+  el.style.opacity = '1';
+  el.classList.add('pulse');
+  setTimeout(() => {
+    el.style.opacity = '0';
+    el.classList.remove('pulse');
+  }, ms);
+}
+
+async function ensureAudioContext() {
+  if (!audioCtx) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) throw new Error('浏览器不支持 AudioContext');
+    audioCtx = new AC();
+    log(`✓ AudioContext 已创建 (sampleRate=${audioCtx.sampleRate}Hz, state=${audioCtx.state})`, '#10b981');
+  }
+  if (audioCtx.state === 'suspended') {
+    await audioCtx.resume();
+    log(`✓ AudioContext 已恢复 (state=${audioCtx.state})`, '#10b981');
+  }
+  return audioCtx;
+}
+
+async function loadAudioBuffer(path) {
+  if (_bufferCache[path]) {
+    log(`  · 命中缓存 ${path}`, '#9ca3af');
+    return _bufferCache[path];
+  }
+  await ensureAudioContext();
+  log(`  · 开始下载音频 ${path}`, '#9ca3af');
+  const resp = await fetch(path);
+  if (!resp.ok) throw new Error(`HTTP ${resp.status} - ${path}`);
+  const ab = await resp.arrayBuffer();
+  log(`  · 下载完成 ${(ab.byteLength/1024).toFixed(1)} KB，开始 decodeAudioData …`, '#9ca3af');
+  // decodeAudioData 在某些浏览器对 mp4 容器返回失败，包成 promise 形式 + try/catch
+  const buf = await new Promise((resolve, reject) => {
+    audioCtx.decodeAudioData(ab.slice(0), resolve, reject);
+  });
+  log(`  · decode 成功，duration=${buf.duration.toFixed(2)}s, channels=${buf.numberOfChannels}`, '#10b981');
+  _bufferCache[path] = buf;
+  return buf;
+}
+
+function stopAll() {
+  if (_currentSource) { try { _currentSource.stop(); } catch(e) {} _currentSource = null; }
+  if (_currentAudioEl) {
+    try { _currentAudioEl.pause(); _currentAudioEl.currentTime = 0; } catch(e) {}
+    if (_currentAudioEl.parentNode) _currentAudioEl.parentNode.removeChild(_currentAudioEl);
+    _currentAudioEl = null;
+  }
+  if (_videoTimer) { clearTimeout(_videoTimer); _videoTimer = null; }
+  if (_audioTimer) { clearTimeout(_audioTimer); _audioTimer = null; }
+  if (video) { video.pause(); video.currentTime = 0; }
+  audioFlash.style.opacity = '0';
+  videoFlash.style.opacity = '0';
+}
+
+async function playSOA(soa) {
+  try {
+    stopAll();
+    const matKey = matSelect.value;
+    const mat = MATERIALS[matKey];
+
+    log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', '#6b7280');
+    log(`▶ 开始：SOA = <b>${soa >= 0 ? '+' : ''}${soa} ms</b>，素材 /${matKey}/`, '#3b82f6');
+
+    // 0) 先用用户手势唤醒 audioContext
+    await ensureAudioContext();
+
+    // 1) 切换视频源（若不同）并等待 readyState >= 2
+    const targetVideoUrl = new URL(mat.video, location.href).href;
+    if (videoSrc.src !== targetVideoUrl) {
+      log(`  · 切换视频源 → ${mat.video}`, '#9ca3af');
+      videoSrc.src = mat.video;
+      video.load();
+    }
+    if (video.readyState < 2) {
+      await new Promise(resolve => {
+        const onReady = () => { video.removeEventListener('loadeddata', onReady); resolve(); };
+        video.addEventListener('loadeddata', onReady);
+        setTimeout(resolve, 3000);
+      });
+    }
+    log(`  · 视频就绪 readyState=${video.readyState} duration=${video.duration ? video.duration.toFixed(2)+'s' : 'unknown'}`, '#10b981');
+    video.currentTime = 0;
+    video.muted = true;
+    video.pause();
+
+    // 2) 预解码音频（带 fallback）
+    let buffer = null;
+    const audioCached = !!_bufferCache[mat.audio];
+    if (!_audioFallbackMode) {
+      try {
+        buffer = await loadAudioBuffer(mat.audio);
+      } catch (e) {
+        log(`  ✗ decodeAudioData 失败：${e && e.message ? e.message : e}`, '#fca5a5');
+        log(`  · 自动切换到 &lt;audio&gt; 元素 fallback 模式`, '#fbbf24');
+        _audioFallbackMode = true;
+      }
+    } else {
+      log(`  · 已在 fallback 模式（用 &lt;audio&gt; 元素）`, '#fbbf24');
+    }
+
+    // 3) 计算精确启动时刻 — 素材都已就绪时缓冲只要 50ms
+    const ctx = audioCtx;
+    const BUFFER_S = (audioCached && video.readyState >= 3) ? 0.05 : 0.20;
+    const t0 = ctx.currentTime + BUFFER_S;
+    const audioStartTime = soa >= 0 ? t0 : t0 + Math.abs(soa) / 1000;
+    const videoStartTime = soa <= 0 ? t0 : t0 + soa / 1000;
+
+    const audioDelayMs = Math.round((audioStartTime - ctx.currentTime) * 1000);
+    const videoDelayMs = Math.round((videoStartTime - ctx.currentTime) * 1000);
+    const diffMs       = Math.round((audioStartTime - videoStartTime) * 1000);
+    const hint = soa > 0 ? '应该听到声音先响' : (soa < 0 ? '应该看到画面先动' : '声画同步');
+
+    log(`  ctxNow=${ctx.currentTime.toFixed(4)}s`, '#9ca3af');
+    log(`  audioDelay=${audioDelayMs}ms  videoDelay=${videoDelayMs}ms`, '#a78bfa');
+    log(`  diff (audio-video) = <b>${diffMs} ms</b>  → <b>${hint}</b>`,
+        diffMs < 0 ? '#fca5a5' : (diffMs > 0 ? '#93c5fd' : '#86efac'));
+
+    // 4) 调度音频
+    if (buffer && !_audioFallbackMode) {
+      // 4a) Web Audio 精确调度
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(ctx.destination);
+      _currentSource = source;
+      const startAt = Math.max(ctx.currentTime, audioStartTime);
+      try {
+        source.start(startAt);
+        log(`  ✓ source.start(${startAt.toFixed(4)}) 已调度`, '#10b981');
+      } catch (e) {
+        log(`  ✗ source.start 抛错：${e.message}`, '#fca5a5');
+      }
+    } else {
+      // 4b) Fallback：用 <audio> 元素 + setTimeout
+      const a = new Audio(mat.audio);
+      a.preload = 'auto';
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      _currentAudioEl = a;
+      a.addEventListener('error', (e) => {
+        log(`  ✗ &lt;audio&gt; 加载失败：${a.error ? a.error.message : 'unknown'}`, '#fca5a5');
+      });
+      a.addEventListener('canplaythrough', () => {
+        log(`  · &lt;audio&gt; canplaythrough，将在 ${audioDelayMs}ms 后 play()`, '#9ca3af');
+      });
+      _audioTimer = setTimeout(() => {
+        a.play()
+          .then(() => log(`  ✓ &lt;audio&gt;.play() 成功`, '#10b981'))
+          .catch(e => log(`  ✗ &lt;audio&gt;.play() 失败：${e.message}`, '#fca5a5'));
+      }, audioDelayMs);
+    }
+
+    // 闪光提示（在音频实际响起的瞬间）
+    setTimeout(() => {
+      flash(audioFlash);
+      log(`  🔊 音频起响 @ ctx=${audioCtx.currentTime.toFixed(4)}s`, '#ef4444');
+    }, audioDelayMs);
+
+    // 5) 调度视频
+    _videoTimer = setTimeout(() => {
+      const playT0 = performance.now();
+      video.play()
+        .then(() => {
+          flash(videoFlash);
+          log(`  👁 video.play() 成功 @ ctx=${audioCtx.currentTime.toFixed(4)}s, 调用耗时 ${(performance.now()-playT0).toFixed(0)}ms`, '#3b82f6');
+        })
+        .catch(e => {
+          log(`  ✗ video.play() 失败：${e.message}`, '#fca5a5');
+        });
+    }, videoDelayMs);
+
+  } catch (err) {
+    log(`✗ playSOA 异常：${err && err.message ? err.message : err}`, '#fca5a5');
+    console.error(err);
+  }
+}
+
+// 绑定按钮
+document.querySelectorAll('.soa-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const soa = parseFloat(btn.dataset.soa);
+    playSOA(soa);
+  });
+});
+stopBtn.addEventListener('click', stopAll);
+
+// 预热全部素材：一次性解码 ba/da/ga 三组音频 + 加载视频，之后所有点击零延迟
+document.getElementById('warmupBtn').addEventListener('click', async () => {
+  log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', '#6b7280');
+  log('🔥 开始预热全部素材...', '#a855f7');
+  await ensureAudioContext();
+  const tasks = [];
+  for (const key of Object.keys(MATERIALS)) {
+    const mat = MATERIALS[key];
+    // 音频解码
+    tasks.push(
+      loadAudioBuffer(mat.audio)
+        .then(b => log(`  ✓ 音频已解码 ${key} (${b.duration.toFixed(2)}s)`, '#10b981'))
+        .catch(e => log(`  ✗ 音频 ${key} 解码失败：${e.message}`, '#fca5a5'))
+    );
+  }
+  // 当前视频也确保 readyState>=4 (HAVE_ENOUGH_DATA)
+  if (video.readyState < 4) {
+    tasks.push(new Promise(r => {
+      const onReady = () => { video.removeEventListener('canplaythrough', onReady); r(); };
+      video.addEventListener('canplaythrough', onReady);
+      setTimeout(r, 3000);
+    }));
+  }
+  await Promise.all(tasks);
+  log('✅ 全部素材已就绪，后续点击将零延迟启动', '#10b981');
+});
+
+// 初次加载视频
+video.load();
+log('页面已就绪，请点击上方任一按钮开始测试 ✅', '#10b981');
+log('💡 点击任一按钮会同时唤醒 AudioContext（浏览器要求用户手势）', '#9ca3af');
+</script>
+</body>
+</html>

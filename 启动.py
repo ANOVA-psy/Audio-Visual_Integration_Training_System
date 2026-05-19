@@ -351,29 +351,44 @@ def main():
     print()
     
     print("📍 本地访问地址：")
-    print(f"   http://localhost:3000/index.html")
-    print(f"   http://localhost:3000/admin.html")
+    print(f"   http://localhost:3000/index.html       （患者首页）")
+    print(f"   http://localhost:3000/admin.html       （管理员后台）")
+    print(f"   http://localhost:3000/history.html     （历史记录）")
+    print(f"   http://localhost:3000/soa_test.html    （SOA 同步性独立测试）")
     print()
-    
+
     if ngrok_url:
         print("🌐 公网访问地址（通过 ngrok）：")
         print(f"   {ngrok_url}/index.html")
         print(f"   {ngrok_url}/admin.html")
+        print(f"   {ngrok_url}/soa_test.html")
         print()
-    
+
     print("=" * 60)
     print()
     print("💡 提示：")
     print("   - 服务器和 ngrok 已在后台运行")
     print("   - 要停止服务器，请关闭对应的进程")
     print()
-    
-    # 询问是否打开浏览器
+
+    # 询问要打开哪个页面
     try:
-        choice = input("是否要打开浏览器测试？(Y/N) [Y]: ")
-        if choice.strip().lower() != 'n':
+        print("请选择要在浏览器打开的页面：")
+        print("   [1] 管理员后台 (admin.html)  ← 默认")
+        print("   [2] 患者首页 (index.html)")
+        print("   [3] SOA 同步性测试 (soa_test.html)")
+        print("   [N] 不打开")
+        choice = input("请输入 [1/2/3/N，默认 1]: ").strip().lower()
+
+        page_map = {
+            '':  'admin.html',
+            '1': 'admin.html',
+            '2': 'index.html',
+            '3': 'soa_test.html'
+        }
+        if choice != 'n' and choice in page_map:
             import webbrowser
-            webbrowser.open('http://localhost:3000/admin.html')
+            webbrowser.open(f'http://localhost:3000/{page_map[choice]}')
     except:
         pass
     

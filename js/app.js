@@ -138,6 +138,8 @@
       _confirmedSubjectKey = subjectKey;
       // ★ 确认后：为当前阶段生成所有功能的预设settings
       generateSubjectSettings(subjectId, phase, gender, age);
+      // ★ 用户已交互 → 启动音频解码暖身，让功能 3 训练首次播放零延迟
+      if (typeof warmupAudioBuffers === 'function') warmupAudioBuffers();
       proceed();
     }, function onCancel() {
       console.log('[quickStart] 用户取消确认，返回修改');
@@ -535,6 +537,17 @@
 
     bindEvents();
 
+    // ★ 后台预热：并行下载并解码所有任务音频，让功能 3 / 测试页"零等待"
+    //   注意：解码音频需要 AudioContext，AudioContext 在用户首次交互后才会真正启动
+    //   所以这里只把音频文件下载到 fetch 缓存；解码会在第一次 loadAudioBuffer 时完成
+    try {
+      if (typeof Config !== 'undefined' && Config.MATERIALS) {
+        Config.MATERIALS.forEach(m => {
+          if (m && m.audio) fetch(m.audio).catch(() => {});
+        });
+      }
+    } catch (e) { /* 预热失败不影响主流程 */ }
+
     // 默认显示屏幕（支持 hash 导航 + 管理员页面覆盖）
     const hash = window.location.hash.slice(1);
     if (hash && ['quick','guide','menu','prep','generate','exp','results','history'].includes(hash)) {
@@ -677,10 +690,27 @@
   }
 
   // ==================== 材料准备（管理员） ====================
+  /**
+   * 触发一次"音频解码暖身"：把所有 MATERIALS 音频解码到 AudioBuffer 缓存
+   * 必须在用户手势触发的栈内调用（否则 AudioContext 创建会失败）
+   * 调用一次后，所有 SOA 试次和 SOA 测试页都瞬时开始
+   */
+  function warmupAudioBuffers() {
+    try {
+      if (typeof AudioProcessor === 'undefined' || !AudioProcessor.preloadAudioBuffers) return;
+      if (typeof Config === 'undefined' || !Config.MATERIALS) return;
+      const paths = Config.MATERIALS.map(m => m && m.audio).filter(Boolean);
+      // 异步触发，不阻塞当前流程
+      AudioProcessor.preloadAudioBuffers(paths).catch(() => {});
+    } catch (e) { /* 失败不影响主流程 */ }
+  }
+
   window.goToPreparation = function() {
     STATE.subjectId = document.getElementById('subjectId')?.value || 'P001';
     UIHelper.showScreen('prep');
     updatePreparationUI();
+    // ★ 用户已交互 → 启动音频解码暖身，让功能 3 预览/训练首次播放零延迟
+    warmupAudioBuffers();
   };
 
   function updatePreparationUI() {
@@ -851,7 +881,7 @@
         await AudioProcessor.playMixedAudioFile(previewMat.audio, snr);
         if (video) { video.pause(); video.currentTime = 0; }
       } else if (STATE.func === 3) {
-        // 功能3：单个视频 + SOA延迟 + 音频 + 模糊度
+        // 功能3：单个视频 + SOA延迟 + 音频 + 模糊度（精准毫秒级）
         const video = document.getElementById('previewVideo3');
         const soaSlider = document.getElementById('previewSOASlider');
         const blurSlider3 = document.getElementById('previewBlurSlider3');
@@ -870,74 +900,9 @@
 
         console.log('[playPreview] 功能3预览，SNR:', snr, 'SOA:', soa, '音频:', previewMat.audio);
 
-        // 根据 SOA 播放视频和音频
-        if (soa > 0) {
-          // 视频提前：先播放视频，延迟后播放音频
-          if (video) await video.play();
-          await new Promise(r => setTimeout(r, soa));
-          await AudioProcessor.playMixedAudioFile(previewMat.audio, snr);
-          // 等待视频播放完成
-          if (video && !video.paused) {
-            await new Promise(r => {
-              video.onended = r;
-              setTimeout(r, 5000);
-            });
-          }
-          if (video) { video.pause(); video.currentTime = 0; }
-        } else if (soa < 0) {
-          // 音频提前：先播放音频，延迟后播放视频
-          // 音频和视频都要播放完成才算结束
-          let audioDone = false;
-          let videoDone = false;
-
-          const audioPromise = AudioProcessor.playMixedAudioFile(previewMat.audio, snr)
-            .then(() => { audioDone = true; })
-            .catch(e => { console.error('[playPreview] 音频播放失败:', e); audioDone = true; });
-
-          // 等待 SOA 时间后播放视频
-          await new Promise(r => setTimeout(r, Math.abs(soa)));
-
-          // 确保视频已加载
-          if (video) {
-            if (video.readyState < 2) {
-              await new Promise(r => { video.onloadeddata = r; video.load(); });
-            }
-            await video.play();
-          }
-
-          // 等待音频和视频都完成
-          await new Promise(resolve => {
-            let resolved = false;
-            const doResolve = () => { if (!resolved) { resolved = true; resolve(); } };
-
-            const checkDone = () => { if (audioDone && videoDone) doResolve(); };
-
-            if (video) {
-              video.onended = () => { videoDone = true; checkDone(); };
-              if (video.ended) { videoDone = true; checkDone(); }
-            } else {
-              videoDone = true;
-            }
-
-            audioPromise.then(checkDone);
-
-            // 超时保护
-            setTimeout(() => { videoDone = true; audioDone = true; doResolve(); }, 10000);
-          });
-
-          if (video) { video.pause(); video.currentTime = 0; }
-        } else {
-          // 同步播放
-          if (video) await video.play();
-          await AudioProcessor.playMixedAudioFile(previewMat.audio, snr);
-          if (video && !video.paused) {
-            await new Promise(r => {
-              video.onended = r;
-              setTimeout(r, 5000);
-            });
-          }
-          if (video) { video.pause(); video.currentTime = 0; }
-        }
+        // 用精准 SOA 同步播放
+        await playSOAPrecise(video, previewMat.audio, soa, snr);
+        if (video) { video.pause(); video.currentTime = 0; }
       } else if (STATE.func === 4) {
         // 功能4：目标视频 + 干扰视频 + 音频
         // 根据目标位置决定哪个视频是目标
@@ -1078,6 +1043,9 @@
       STATE.currentTrialIndex = 0;
       STATE.results = [];
 
+      // ★ 训练阶段 + admin 提供 AI 配置 → 初始化 StaircaseController 自适应阶梯
+      initStaircaseControllerIfTraining(trials);
+
       if (STATE.snrMode === 'adaptive') initAdaptiveAlgorithm();
 
       updateTrialSummary();
@@ -1127,6 +1095,9 @@
       STATE.currentTrialIndex = 0;
       STATE.results = [];
 
+      // ★ 训练阶段 + admin 提供 AI 配置 → 初始化 StaircaseController 自适应阶梯
+      initStaircaseControllerIfTraining(trials);
+
       if (STATE.snrMode === 'adaptive') initAdaptiveAlgorithm();
 
       UIHelper.hideLoading();
@@ -1153,6 +1124,91 @@
       maxReversals: 8,
       isRunning: false
     };
+  }
+
+  /**
+   * 训练阶段 + admin 提供 AI 配置 → 启用 StaircaseController
+   * 把 trialQueue 改造成"动态生成"：保留首条试次（用 AI 起点参数覆盖其难度），
+   * 后续试次将由 staircase 在 submitAnswer 后逐条 push 进队列
+   * @param {Array} originalTrials - 模块原本生成的全量队列（仅用作模板）
+   */
+  function initStaircaseControllerIfTraining(originalTrials) {
+    STATE.staircase = null;
+    if (!originalTrials || originalTrials.length === 0) return;
+    if (STATE.phase !== 'train') return;
+    if (typeof StaircaseController === 'undefined') return;
+    if (typeof window.getAIRecoSnapshot !== 'function') return;
+
+    const snap = window.getAIRecoSnapshot();
+    if (!snap || !snap.funcConfig) return;
+
+    const sc = new StaircaseController(STATE.func, snap.funcConfig, {
+      maxTrials:    snap.totalTrials,
+      maxReversals: snap.maxReversals
+    });
+
+    // 用 staircase 生成的难度覆盖第一条 trial（保留 word/choices 模板）
+    const first = originalTrials[0];
+    const stairTrial = sc.getNextTrial();
+    if (first && stairTrial) {
+      mergeStaircaseTrialInto(first, stairTrial);
+    }
+
+    // 截断队列为单条（其余将动态 push）
+    STATE.trialQueue = originalTrials.slice(0, 1);
+    STATE.staircase = sc;
+
+    console.log('[Staircase] 已启用自适应阶梯', sc.getSummary());
+  }
+
+  /**
+   * 把 staircase 给的难度参数写入下一条 trial（保留 word/choices/correctIndex 等）
+   */
+  function mergeStaircaseTrialInto(trial, stair) {
+    if (!trial || !stair) return;
+    if (stair.snr != null)        trial.snr = stair.snr;
+    if (stair.blur != null)       trial.blur = stair.blur;
+    if (stair.soa != null)        trial.soa  = stair.soa;
+    if (stair.attention)          trial.attention = stair.attention;
+    if (stair._whichBoundary)     trial._whichBoundary = stair._whichBoundary;
+    if (stair.distractorAttenuation != null) {
+      trial.distractorAttenuation = stair.distractorAttenuation;
+    }
+  }
+
+  /**
+   * submitAnswer 中调用：根据正误更新难度并准备下一条 trial
+   */
+  function applyStaircaseStep(sc, isCorrect, lastTrial) {
+    const meta = lastTrial ? { _whichBoundary: lastTrial._whichBoundary } : {};
+    const r = sc.updateDifficulty(!!isCorrect, meta);
+
+    if (r.isCompleted) {
+      console.log('[Staircase] 训练完成 → 触发结果计算', sc.getSummary());
+      // 不再追加 trial，让现有 startNextTrial 流程在 currentTrialIndex >= length 时自动 showResults
+      return;
+    }
+
+    // 根据当前难度生成下一条 trial（沿用 lastTrial 的 word/choices 作为模板）
+    const stair = sc.getNextTrial();
+    if (!stair) return;
+
+    // 复制 lastTrial 作为模板，然后改写难度参数 + 换一个 word 让题目更新
+    const next = JSON.parse(JSON.stringify(lastTrial || {}));
+    // 随机换 word（避免连续同一个题）
+    if (typeof Config !== 'undefined' && Array.isArray(Config.WORD_BANK)) {
+      const item = Config.WORD_BANK[Math.floor(Math.random() * Config.WORD_BANK.length)];
+      next.word          = item.word;
+      next.choices       = item.choices.slice();
+      next.correctAnswer = item.word;
+      next.shuffledChoices = null; // 让 startNextTrial 重新洗牌
+      next.correctIndex    = null;
+    }
+    // 功能 4：随机 targetSide
+    if (STATE.func === 4) next.targetSide = Math.random() < 0.5 ? 'left' : 'right';
+
+    mergeStaircaseTrialInto(next, stair);
+    STATE.trialQueue.push(next);
   }
 
   function updateGenerateUI(trialCount) {
@@ -1422,22 +1478,8 @@
       if (STATE.func === 4 && trial) {
         const side = trial.targetSide || 'left';
         
-        // ★ 先更新视频标签
-        const leftLabel = document.getElementById('expTargetLabel');
-        const rightLabel = document.getElementById('expDistractorLabel');
-        if (leftLabel && rightLabel) {
-          if (side === 'left') {
-            leftLabel.textContent = '👤 目标';
-            leftLabel.className = 'absolute top-1 left-1 bg-blue-600 text-white text-xs px-2 py-0.5 rounded';
-            rightLabel.textContent = '🚫 干扰';
-            rightLabel.className = 'absolute top-1 right-1 bg-red-600 text-white text-xs px-2 py-0.5 rounded';
-          } else {
-            leftLabel.textContent = '🚫 干扰';
-            leftLabel.className = 'absolute top-1 left-1 bg-red-600 text-white text-xs px-2 py-0.5 rounded';
-            rightLabel.textContent = '👤 目标';
-            rightLabel.className = 'absolute top-1 right-1 bg-blue-600 text-white text-xs px-2 py-0.5 rounded';
-          }
-        }
+        // ★ 先更新视频标签（用 inline style 强制底色，避免 Tailwind CDN 漏类）
+        applyFunc4Labels(side);
         
         // ★ 同时更新视频源
         const mat = getMaterialForWord(trial.word);
@@ -1495,6 +1537,27 @@
         
         // ★ 已删除：原本在试次开始就弹出 1.5s 的左/右提示
         // 现在改为在用户点击播放按钮后才弹出 1s 提示（见 expPlay 中的 showAttentionCue）
+      }
+
+      // ★ 功能3：试次开始时就提前加载视频和音频，让点击播放零等待
+      if (STATE.func === 3 && trial) {
+        const mat = getMaterialForWord(trial.word);
+        if (mat) {
+          // 预加载视频到第一帧
+          const expVideo3 = document.getElementById('expVideo3');
+          const expSrc3   = document.getElementById('expVideo3Src');
+          if (expSrc3 && expVideo3) {
+            const targetUrl = new URL(mat.video, location.href).href;
+            if (expSrc3.src !== targetUrl) {
+              expSrc3.src = mat.video;
+              expVideo3.load();
+            }
+          }
+          // 预解码任务音频（异步，不阻塞 UI）
+          if (typeof AudioProcessor !== 'undefined' && AudioProcessor.loadAudioBuffer && mat.audio) {
+            AudioProcessor.loadAudioBuffer(mat.audio).catch(() => {});
+          }
+        }
       }
 
       // 洗牌选项（只做一次）
@@ -1688,25 +1751,15 @@
         // ★ 根据 trial.targetSide 动态设置视频源和标签
         const targetSide = trial.targetSide || 'left';
 
-        // 动态更新视频标签
-        const leftLabel = document.getElementById('expTargetLabel');
-        const rightLabel = document.getElementById('expDistractorLabel');
-        if (leftLabel && rightLabel) {
-          if (targetSide === 'left') {
-            leftLabel.textContent = '👤 目标';
-            leftLabel.className = 'absolute top-1 left-1 bg-blue-600 text-white text-xs px-2 py-0.5 rounded';
-            rightLabel.textContent = '🚫 干扰';
-            rightLabel.className = 'absolute top-1 right-1 bg-red-600 text-white text-xs px-2 py-0.5 rounded';
-          } else {
-            leftLabel.textContent = '🚫 干扰';
-            leftLabel.className = 'absolute top-1 left-1 bg-red-600 text-white text-xs px-2 py-0.5 rounded';
-            rightLabel.textContent = '👤 目标';
-            rightLabel.className = 'absolute top-1 right-1 bg-blue-600 text-white text-xs px-2 py-0.5 rounded';
-          }
-        }
+        // 动态更新视频标签（统一用 applyFunc4Labels 工具函数）
+        applyFunc4Labels(targetSide);
 
-        // ★ 新增：弹出 1s「请注意 左/右」提示后再开始播放
+        // ★ 弹出 1s「请注意 左/右」提示后再开始播放
+        // 提示阶段按钮显示「👁 请注意目标侧…」，与"播放中"明确区分
+        updatePlayButton('cue');
         await showAttentionCue(targetSide);
+        // 提示结束 → 真正进入"播放中"阶段（按钮文本切回「🔊 播放中...」）
+        updatePlayButton('playing');
 
         // 准备视频元素
         let targetVideo, distVideo;
@@ -1737,6 +1790,19 @@
           if (distVideo) { distVideo.load(); distVideo.currentTime = 0; }
         }
 
+        // ★ 等待两个视频都 readyState >= 2（HAVE_CURRENT_DATA），避免 onended 不触发
+        const waitReady = (v) => new Promise((resolve) => {
+          if (!v || v.readyState >= 2) return resolve();
+          const onReady = () => { v.removeEventListener('loadeddata', onReady); resolve(); };
+          v.addEventListener('loadeddata', onReady);
+          setTimeout(resolve, 3000);
+        });
+        await Promise.all([waitReady(targetVideo), waitReady(distVideo)]);
+
+        // 视频统一静音（声音由 audioContext 出）
+        if (targetVideo) targetVideo.muted = true;
+        if (distVideo)   distVideo.muted   = true;
+
         // 同步开始播放视频
         const playPromises = [];
         if (targetVideo) playPromises.push(targetVideo.play().catch(() => {}));
@@ -1750,13 +1816,26 @@
           await AudioProcessor.playMixedAudioFile(mat.audio, trial.snr);
         }
 
-        // ★ 关键：等待所有视频播放结束（音频已 await 完成，等视频自然结束）
-        const waitVideo = (v) => new Promise(resolve => {
-          if (!v || v.ended) return resolve();
-          v.onended = resolve;
-          setTimeout(resolve, 8000); // 超时保护
+        // ★ 关键：等待所有视频「真正自然结束」才开放选项
+        // 同时监听 ended 事件 + 轮询 video.ended，确保即使事件丢失也能感知结束
+        const waitVideoEnd = (v) => new Promise(resolve => {
+          if (!v) return resolve();
+          if (v.ended) return resolve();
+          let resolved = false;
+          const done = () => { if (!resolved) { resolved = true; resolve(); } };
+          v.addEventListener('ended', done, { once: true });
+          // 兜底轮询
+          const poll = setInterval(() => {
+            if (resolved) { clearInterval(poll); return; }
+            if (!v || v.ended || v.paused && v.currentTime >= (v.duration || 999) - 0.05) {
+              clearInterval(poll);
+              done();
+            }
+          }, 100);
+          // 最终超时（视频长度 + 缓冲）
+          setTimeout(() => { clearInterval(poll); done(); }, 12000);
         });
-        await Promise.all([waitVideo(targetVideo), waitVideo(distVideo)]);
+        await Promise.all([waitVideoEnd(targetVideo), waitVideoEnd(distVideo)]);
         if (targetVideo) { targetVideo.pause(); targetVideo.currentTime = 0; }
         if (distVideo)   { distVideo.pause();   distVideo.currentTime = 0; }
       }
@@ -1788,155 +1867,225 @@
   };
 
   /**
-   * 功能3：基于 SOA 的毫秒级音画同步（修改为单个视频窗口）
-   * 功能3只有一个视频窗口，只是视频和音频的延时
+   * 功能3：基于 SOA 的毫秒级音画同步（精准实现）
+   * 委托给 playSOAPrecise 实现，预览与训练共用同一份逻辑
+   * @param {Object} trial
+   * @param {Object} mat - 含 mat.video / mat.audio 路径
    */
-    async function playWithSOA(trial, mat) {
+  async function playWithSOA(trial, mat) {
     const video = document.getElementById('expVideo3');
     const soa = trial.soa || 0;
-    
+
     if (!video) {
       await AudioProcessor.playMixedAudioFile(mat.audio, trial.snr);
       return;
     }
-    
-    // 功能3 只有一个视频窗口
+
+    // 设置视频源
     const src = document.getElementById('expVideo3Src');
-    if (src) src.src = mat.video;
-    video.load();
-    
-    video.currentTime = 0;
-    
+    if (src && src.src !== new URL(mat.video, location.href).href) {
+      src.src = mat.video;
+      video.load();
+    }
+
     EventLogger.stimulus('soa_start', { soa: soa, trial: STATE.currentTrialIndex + 1 });
-    
-    // 根据SOA值调整视频和音频的播放时序
-    if (soa > 0) {
-      // 视频提前：先播放视频，延迟播放音频
-      await video.play();
-      await new Promise(r => setTimeout(r, soa));
-      await AudioProcessor.playMixedAudioFile(mat.audio, trial.snr);
-      // 等待视频播放完成
-      await new Promise(resolve => {
-        video.onended = resolve;
-        // 超时保护（视频长度+5秒）
-        setTimeout(resolve, 8000);
-      });
-    } else if (soa < 0) {
-      // 音频提前：先播放音频，延迟播放视频
-      // 音频和视频都要播放完成才算结束
-      let audioDone = false;
-      let videoDone = false;
-      let audioError = null;
 
-      // 启动音频播放
-      const audioPromise = AudioProcessor.playMixedAudioFile(mat.audio, trial.snr)
-        .then(() => {
-          audioDone = true;
-          console.log('[playWithSOA] 音频播放完成');
-        })
-        .catch(e => {
-          audioError = e;
-          audioDone = true;
-          console.error('[playWithSOA] 音频播放失败:', e);
-        });
+    await playSOAPrecise(video, mat.audio, soa, trial.snr);
 
-      // 等待 SOA 时间后播放视频
-      await new Promise(r => setTimeout(r, Math.abs(soa)));
+    EventLogger.stimulus('soa_complete', { soa });
+  }
 
-      // 确保视频元素已加载
-      if (video.readyState < 2) {
-        await new Promise(r => {
-          video.onloadeddata = r;
-          video.load();
-        });
-      }
+  /**
+   * 精准毫秒级音画同步播放（共享给预览和训练）
+   *
+   * 关键技术：
+   *   - 视频：预先 load 到 readyState>=2，定格在第 0 帧；起播只调 video.play()
+   *   - 音频：用 AudioContext.decodeAudioData 预解码 → AudioBufferSourceNode.start(t)
+   *           在精确的 audioContext.currentTime 时刻启动（亚毫秒级）
+   *   - 调度：用同一份 audioContext.currentTime 作为时间基准
+   *           视频用 setTimeout 唤醒（最坏 ~15ms 抖动），音频是硬件级精确
+   *
+   * SOA 规则：
+   *   soa > 0：听觉领先（音频先播放，soa ms 后播视频）
+   *   soa < 0：视觉领先（视频先播放，|soa| ms 后播音频）
+   *   soa = 0：同步
+   *
+   * @param {HTMLVideoElement} video
+   * @param {string} audioPath
+   * @param {number} soa - 毫秒
+   * @param {number} snr - 信噪比 dB
+   */
+  async function playSOAPrecise(video, audioPath, soa, snr) {
+    if (!video) {
+      await AudioProcessor.playMixedAudioFile(audioPath, snr);
+      return;
+    }
 
-      await video.play();
-
-      // 等待音频和视频都完成
-      await new Promise(resolve => {
-        let resolved = false;
-
-        const doResolve = () => {
-          if (!resolved) {
-            resolved = true;
-            resolve();
-          }
-        };
-
-        const checkDone = () => {
-          if (audioDone && videoDone) {
-            doResolve();
-          }
-        };
-
-        // 监听视频结束
-        video.onended = () => {
-          videoDone = true;
-          console.log('[playWithSOA] 视频播放完成');
-          checkDone();
-        };
-
-        // 如果视频很短，可能已经结束了
-        if (video.ended) {
-          videoDone = true;
-          checkDone();
-        }
-
-        // 如果音频还没完成，等待音频
-        if (!audioDone) {
-          audioPromise.then(checkDone);
-        } else {
-          checkDone();
-        }
-
-        // 超时保护（视频长度 + 音频长度 + 缓冲，最多15秒）
-        setTimeout(() => {
-          console.warn('[playWithSOA] 超时，强制结束');
-          videoDone = true;
-          audioDone = true;
-          doResolve();
-        }, 15000);
-      });
-    } else {
-      // 同步播放
-      await video.play();
-      await AudioProcessor.playMixedAudioFile(mat.audio, trial.snr);
-      // 等待视频播放完成
-      await new Promise(resolve => {
-        video.onended = resolve;
-        setTimeout(resolve, 8000);
+    // 1) 视频准备：仅当未就绪才等待
+    if (video.readyState < 2) {
+      await new Promise((resolve) => {
+        const onReady = () => { video.removeEventListener('loadeddata', onReady); resolve(); };
+        video.addEventListener('loadeddata', onReady);
+        setTimeout(resolve, 3000);
       });
     }
-    
-    EventLogger.stimulus('soa_complete', { soa });
-    
-    // 播放完后停止视频
+    video.currentTime = 0;
+    video.muted = true; // 视频自带音轨静音，统一由 audioContext 出声
+    video.pause();
+
+    // 2) 启动噪音通道
+    await AudioProcessor.initAudioContext();
+    await AudioProcessor.loadNoise();
+    AudioProcessor.startNoise();
+    AudioProcessor.setNoiseLevel(snr);
+
+    // 3) 预解码任务音频（已缓存则瞬间返回）
+    const audioCached = AudioProcessor.isAudioBufferCached
+      ? AudioProcessor.isAudioBufferCached(audioPath)
+      : false;
+    await AudioProcessor.loadAudioBuffer(audioPath);
+
+    // 4) 计算精确启动时刻
+    //    SOA 约定（与 module3 / resultCharts 一致）：
+    //      soa > 0 → 听觉领先：音频先响，soa ms 后视频画面才出现
+    //      soa < 0 → 视觉领先：视频画面先出现，|soa| ms 后才有声音
+    //      soa = 0 → 同步
+    const ctx = AudioProcessor.getAudioContext();
+    // 素材都已就绪 → 50ms 缓冲就够；任何一项未就绪 → 退到 200ms 留余量
+    const BUFFER_S = (audioCached && video.readyState >= 3) ? 0.05 : 0.20;
+    const t0 = ctx.currentTime + BUFFER_S;
+    const audioStartTime = soa >= 0 ? t0 : t0 + Math.abs(soa) / 1000;
+    const videoStartTime = soa <= 0 ? t0 : t0 + soa / 1000;
+
+    const ctxNow = ctx.currentTime;
+    console.log('[SOA] 调度', {
+      soa_ms:        soa,
+      ctxNow:        ctxNow.toFixed(4),
+      audioStart:    audioStartTime.toFixed(4),
+      videoStart:    videoStartTime.toFixed(4),
+      audioDelay_ms: Math.round((audioStartTime - ctxNow) * 1000),
+      videoDelay_ms: Math.round((videoStartTime - ctxNow) * 1000),
+      diff_ms:       Math.round((audioStartTime - videoStartTime) * 1000),
+      hint: soa > 0 ? '应该听到声音先响' : (soa < 0 ? '应该看到画面先动' : '声画同步')
+    });
+
+    // 5) 同步调度
+    // 5a) 音频：硬件级精确（AudioContext.start(t)）
+    const audioPromise = AudioProcessor.playAudioBufferScheduled(audioPath, audioStartTime)
+      .then((info) => {
+        console.log('[SOA] 音频自然结束', { soa, dur: info && info.duration });
+        return info;
+      });
+
+    // 5b) 视频：用 setTimeout 唤醒
+    const videoDelayMs = Math.max(0, (videoStartTime - ctx.currentTime) * 1000);
+    const videoPromise = new Promise((resolve) => {
+      const fire = () => {
+        const playT = performance.now();
+        video.play()
+          .then(() => console.log('[SOA] 视频实际起播', { soa, ctxAt: ctx.currentTime.toFixed(4), planAt: videoStartTime.toFixed(4), delta_ms: Math.round((ctx.currentTime - videoStartTime) * 1000) }))
+          .catch((e) => console.warn('[SOA] video.play() 失败', e));
+        const onEnd = () => { video.removeEventListener('ended', onEnd); resolve(); };
+        video.addEventListener('ended', onEnd);
+        // 兜底（视频长度上限 + 缓冲）
+        setTimeout(resolve, 12000);
+        // 调用栈延迟提示
+        if (performance.now() - playT > 5) {
+          console.log('[SOA] video.play 调用耗时', Math.round(performance.now() - playT), 'ms');
+        }
+      };
+      if (videoDelayMs <= 0) fire();
+      else setTimeout(fire, videoDelayMs);
+    });
+
+    // 6) 等待两端都自然结束
+    await Promise.all([audioPromise, videoPromise]);
+
+    // 7) 收尾
     video.pause();
     video.currentTime = 0;
+    AudioProcessor.fadeOutAndStopNoise();
   }
 
 
   // 播放键就绪状态标志
   let playButtonReady = { video: false, choices: false };
 
-  function updatePlayButton(isPlaying, justFinished = false) {
+  /**
+   * 更新所有功能的播放按钮显示
+   * @param {boolean|string} state
+   *   - false / 'idle'      → "▶️ 播放（按空格键）"（可点击）
+   *   - true / 'playing'    → "🔊 播放中..."（禁用）
+   *   - 'cue'               → "👁 请注意 …"（禁用，功能 4 提示阶段专用）
+   *   - 'finished'          → "✅ 播放完成，请选择答案"（禁用）
+   * @param {boolean} [justFinished] 兼容旧签名 updatePlayButton(false, true)
+   */
+  function updatePlayButton(state, justFinished) {
+    // 旧签名兼容
+    if (state === false && justFinished === true) state = 'finished';
+    else if (state === true)  state = 'playing';
+    else if (state === false) state = 'idle';
+
+    const isDisabled = (state !== 'idle');
     ['exp1PlayBtn','exp2PlayBtn','exp3PlayBtn','exp4PlayBtn'].forEach(id => {
       const btn = document.getElementById(id);
-      if (btn) {
-        btn.disabled = isPlaying || justFinished;
-        btn.classList.toggle('opacity-50', isPlaying || justFinished);
-        btn.classList.toggle('play-pulse', !isPlaying && !justFinished);
-        if (isPlaying) {
+      if (!btn) return;
+      btn.disabled = isDisabled;
+      btn.classList.toggle('opacity-50', isDisabled);
+      btn.classList.toggle('play-pulse', !isDisabled);
+      switch (state) {
+        case 'playing':
           btn.textContent = '🔊 播放中...';
-        } else if (justFinished) {
+          break;
+        case 'cue':
+          btn.textContent = '👁 请注意目标侧…';
+          break;
+        case 'finished':
           btn.textContent = '✅ 播放完成，请选择答案';
-        } else {
+          break;
+        case 'idle':
+        default: {
           const labels = {1:'▶️ 播放（按空格键）', 2:'▶️ 播放（按空格键）', 3:'▶️ 同步播放（按空格键）', 4:'▶️ 播放（按空格键）'};
           btn.textContent = labels[STATE.func] || '▶️ 播放';
+          break;
         }
       }
     });
+  }
+
+  /**
+   * 功能 4 标签样式工具：用 inline style 强制底色 + 内边距，避免 Tailwind CDN 漏类
+   * 标签带半透明黑底色衬底，文字白色，让在视频任何画面上都清晰可见
+   * @param {'left'|'right'} targetSide 目标在哪一侧
+   */
+  function applyFunc4Labels(targetSide) {
+    const leftLabel  = document.getElementById('expTargetLabel');
+    const rightLabel = document.getElementById('expDistractorLabel');
+    if (!leftLabel || !rightLabel) return;
+
+    // 完全不透明的色块标签，替换原"大眼睛 + 渐变"
+    // 视频背景再亮也能看清；圆角 + 细描边让边缘更柔和
+    const baseStyle = 'position:absolute;top:10px;'
+      + 'color:#fff;font-size:14px;font-weight:700;letter-spacing:1.5px;'
+      + 'padding:5px 14px;border-radius:999px;'
+      + 'line-height:1.2;'
+      + 'box-shadow:0 2px 10px rgba(0,0,0,0.35);'
+      + 'border:2px solid #ffffff;'
+      + 'user-select:none;';
+
+    // 不透明纯色（不再用渐变）
+    const targetBg = 'background:#2563eb;';   // 实蓝
+    const distBg   = 'background:#475569;';   // 实灰（淡化干扰，避免与目标抢眼）
+
+    // 左标签
+    leftLabel.removeAttribute('class');
+    leftLabel.style.cssText = baseStyle + 'left:10px;' + (targetSide === 'left' ? targetBg : distBg);
+    leftLabel.textContent = targetSide === 'left' ? '✓ 目标' : '— 干扰';
+
+    // 右标签
+    rightLabel.removeAttribute('class');
+    rightLabel.style.cssText = baseStyle + 'right:10px;' + (targetSide === 'right' ? targetBg : distBg);
+    rightLabel.textContent = targetSide === 'right' ? '✓ 目标' : '— 干扰';
   }
 
   /**
@@ -1949,13 +2098,16 @@
     return new Promise(resolve => {
       const overlay = document.getElementById('trialOverlay');
       if (!overlay) { resolve(); return; }
-      const sideText = side === 'left' ? '左侧 ⬅️' : '右侧 ➡️';
+      const sideText  = side === 'left' ? '左侧' : '右侧';
+      const sideArrow = side === 'left' ? '←' : '→';
       const sideColor = side === 'left' ? '#3b82f6' : '#10b981';
       overlay.innerHTML = `
-        <div style="text-align:center;color:#fff;">
-          <div style="font-size:42px;font-weight:800;margin-bottom:8px;">👁️ 请注意</div>
-          <div style="font-size:56px;font-weight:800;color:${sideColor};text-shadow:0 2px 8px rgba(0,0,0,.4);">${sideText}</div>
-          <div style="font-size:14px;color:#cbd5e1;margin-top:10px;">即将开始播放…</div>
+        <div style="text-align:center;color:#fff;background:rgba(15,23,42,0.85);padding:24px 40px;border-radius:18px;box-shadow:0 8px 28px rgba(0,0,0,.35);">
+          <div style="font-size:14px;font-weight:600;color:#cbd5e1;letter-spacing:6px;margin-bottom:6px;">请关注</div>
+          <div style="font-size:52px;font-weight:800;color:${sideColor};line-height:1.05;">
+            ${sideArrow} ${sideText}
+          </div>
+          <div style="font-size:12px;color:#94a3b8;margin-top:8px;letter-spacing:2px;">即将开始播放</div>
         </div>
       `;
       overlay.classList.remove('hidden');
@@ -2103,6 +2255,11 @@
       };
 
       STATE.results.push(result);
+
+      // ★ 自适应阶梯：根据 isCorrect 调难度，并把下一个 trial 写入队列
+      if (STATE.staircase) {
+        applyStaircaseStep(STATE.staircase, isCorrect, trial);
+      }
 
       // ★ 立即渲染按钮颜色（不等 ITI）
       const buttons = document.querySelectorAll('#expChoices button');

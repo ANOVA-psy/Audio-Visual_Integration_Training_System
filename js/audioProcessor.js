@@ -504,10 +504,68 @@ const AudioProcessor = (function () {
     console.log('[Audio] 已保存音频输出设备:', sinkId || '（默认）');
   }
 
+  /* ==================================================================
+   * 精准时序专用：解码并缓存 AudioBuffer
+   * 用于功能三的毫秒级 SOA 同步
+   * ================================================================== */
+  const _audioBufferCache = {};
+
+  async function loadAudioBuffer(audioPath) {
+    if (_audioBufferCache[audioPath]) return _audioBufferCache[audioPath];
+    await initAudioContext();
+    const resp = await fetch(audioPath);
+    const arrayBuf = await resp.arrayBuffer();
+    const buf = await audioContext.decodeAudioData(arrayBuf);
+    _audioBufferCache[audioPath] = buf;
+    return buf;
+  }
+
+  /**
+   * 批量预加载并解码音频文件（并行）
+   * 调用一次后，后续 loadAudioBuffer 直接命中缓存（<1ms）
+   * @param {string[]} paths
+   */
+  async function preloadAudioBuffers(paths) {
+    if (!Array.isArray(paths)) return;
+    await initAudioContext();
+    const tasks = paths.map(p => loadAudioBuffer(p).catch(e => {
+      console.warn('[AudioProcessor] 预解码失败:', p, e && e.message);
+    }));
+    await Promise.all(tasks);
+    console.log(`[AudioProcessor] 已预解码 ${paths.length} 个音频`);
+  }
+
+  function isAudioBufferCached(audioPath) {
+    return !!_audioBufferCache[audioPath];
+  }
+
+  /**
+   * 在指定 audioContext 时刻播放已缓存的音频（用于精准 SOA）
+   * @param {string} audioPath - 音频路径
+   * @param {number} startAt - audioContext.currentTime 坐标系下的精确启动时刻
+   * @returns {Promise<{node: AudioBufferSourceNode, duration: number}>}
+   *           Promise 在音频自然结束时 resolve
+   */
+  async function playAudioBufferScheduled(audioPath, startAt) {
+    const buffer = await loadAudioBuffer(audioPath);
+    const source = audioContext.createBufferSource();
+    source.buffer = buffer;
+    // 通过专用 gain 连到目的（不经噪音通道）
+    const taskGain = audioContext.createGain();
+    taskGain.gain.value = 1.0;
+    source.connect(taskGain).connect(audioContext.destination);
+    return new Promise((resolve) => {
+      source.onended = () => resolve({ node: source, duration: buffer.duration });
+      source.start(Math.max(audioContext.currentTime, startAt));
+    });
+  }
+
   return {
     initAudioContext,
     loadNoise,
     setNoiseLevel,
+    startNoise,
+    fadeOutAndStopNoise,
     stopAllAudio,
     playMixedAudio,
     playMixedAudioFile,
@@ -516,6 +574,11 @@ const AudioProcessor = (function () {
     playPreviewMixed,
     playTaskAudio,
     playTaskAudioFile,
+    // 精准时序
+    loadAudioBuffer,
+    preloadAudioBuffers,
+    isAudioBufferCached,
+    playAudioBufferScheduled,
     getAudioContext,
     isAudioPlaying,
     get VIDEO_FILES() { return Config.VIDEO_FILES; },

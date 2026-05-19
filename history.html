@@ -123,14 +123,23 @@
     }
   }
 
+  // 暴露给 dataManager.js 的清空函数刷新进度条
+  window.updateStorageInfo = updateStorageInfo;
+
   // 页面加载时先从服务端加载数据，再渲染历史记录
+  // ★ 若用户主动清空过（historyClearedAt 标记存在）→ 不再自动从服务器拉取，避免废旧数据"复活"
   window.addEventListener('DOMContentLoaded', async () => {
-    // 只有当本地没有数据时才从服务器加载
+    const cleared = localStorage.getItem('historyClearedAt');
     const localData = localStorage.getItem('audioVisualTrainingData');
-    if (!localData || localData === '[]' || JSON.parse(localData || '[]').length === 0) {
+    const localEmpty = !localData || localData === '[]' || JSON.parse(localData || '[]').length === 0;
+
+    if (localEmpty && !cleared) {
+      // 仅当：本地为空 且 用户未主动清空过 → 才从服务器拉取（首次访问/新设备等场景）
       if (typeof DataManager !== 'undefined' && DataManager.loadData) {
         await DataManager.loadData();
       }
+    } else if (localEmpty && cleared) {
+      console.log('[history] 检测到 historyClearedAt 标记，跳过自动从服务器加载（保持"已清空"状态）');
     }
     setTimeout(() => {
       const hc = document.getElementById('historyContent');
@@ -174,41 +183,85 @@
     const chart = echarts.init(dom);
     window._historyChartInstances[subjectId] = chart;
 
-    // 只取 active 的记录（被标记 overwritten 的不显示）
-    const visibleRecords = records.filter(d => d.status === 'active' || !d.status);
-
-    // 按功能分组
     const funcColors = { 1: '#3b82f6', 2: '#a855f7', 3: '#f59e0b', 4: '#ef4444' };
     const funcNames  = { 1: '功能一（抗干扰）', 2: '功能二（视觉整合）', 3: '功能三（异步校准）', 4: '功能四（注意定位）' };
-    const funcUnits  = { 1: 'dB', 2: 'dB', 3: 'ms', 4: 'dB' };
 
-    const seriesData = {};
-    [1, 2, 3, 4].forEach(f => { seriesData[f] = []; });
+    /* ----------------------------------------------------------
+     * 数据展示规则：
+     *   - 训练前(pre) / 训练后(post)：每个功能只显示最新一次（active 记录）
+     *   - 训练中(train)：按 attemptNumber 顺序显示所有 active 记录
+     *
+     * X 轴使用类目轴：[前测, 训练#1, 训练#2, ..., 训练#K, 后测]
+     * Y 轴：0–100 分（用 AdaptiveEngine 的单项打分映射）
+     * ---------------------------------------------------------- */
 
-    visibleRecords
-      .filter(d => d.metadata && d.metadata.threshold != null && typeof d.metadata.threshold === 'number')
-      .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
-      .forEach(d => {
+    // 1) 计算每功能的 train 最大次数（用于决定 X 轴长度）
+    const trainMaxByFunc = { 1: 0, 2: 0, 3: 0, 4: 0 };
+    records.forEach(d => {
+      if (!d.metadata) return;
+      if (d.metadata.phase === 'train' && (d.status === 'active' || !d.status)) {
         const f = d.metadata.func;
-        if (!seriesData[f]) seriesData[f] = [];
-        seriesData[f].push({
-          value: [d.timestamp, +d.metadata.threshold.toFixed(2)],
-          attempt: d.attemptNumber || 1,
-          phase: d.metadata.phase
-        });
-      });
+        const a = d.attemptNumber || d.metadata.attemptNumber || 1;
+        if (a > trainMaxByFunc[f]) trainMaxByFunc[f] = a;
+      }
+    });
+    const maxTrain = Math.max(trainMaxByFunc[1], trainMaxByFunc[2], trainMaxByFunc[3], trainMaxByFunc[4]);
 
+    // 2) 构造 X 轴类目
+    const xCats = ['前测'];
+    for (let i = 1; i <= maxTrain; i++) xCats.push('训练 #' + i);
+    xCats.push('后测');
+
+    // 3) 各功能的数据（一一对应 xCats，没有的填 null）
     const seriesList = [];
+    const funcHasData = { 1: false, 2: false, 3: false, 4: false };
+
     [1, 2, 3, 4].forEach(f => {
-      if (seriesData[f].length > 0) {
+      const dataArr = new Array(xCats.length).fill(null);
+
+      // 前测：取最新 active
+      const preRec = records
+        .filter(d => d.metadata.func === f && d.metadata.phase === 'pre' && (d.status === 'active' || !d.status))
+        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0];
+      if (preRec) {
+        const score = AdaptiveEngine.scoreRecord(preRec);
+        dataArr[0] = { value: score, raw: preRec, label: '前测' };
+        funcHasData[f] = true;
+      }
+
+      // 训练中：按 attempt 排序填入
+      records
+        .filter(d => d.metadata.func === f && d.metadata.phase === 'train' && (d.status === 'active' || !d.status))
+        .sort((a, b) => (a.attemptNumber || 0) - (b.attemptNumber || 0))
+        .forEach(rec => {
+          const a = rec.attemptNumber || rec.metadata.attemptNumber || 1;
+          if (a >= 1 && a <= maxTrain) {
+            const score = AdaptiveEngine.scoreRecord(rec);
+            dataArr[a] = { value: score, raw: rec, label: '训练 #' + a };
+            funcHasData[f] = true;
+          }
+        });
+
+      // 后测：取最新 active
+      const postRec = records
+        .filter(d => d.metadata.func === f && d.metadata.phase === 'post' && (d.status === 'active' || !d.status))
+        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0];
+      if (postRec) {
+        const score = AdaptiveEngine.scoreRecord(postRec);
+        dataArr[xCats.length - 1] = { value: score, raw: postRec, label: '后测' };
+        funcHasData[f] = true;
+      }
+
+      if (funcHasData[f]) {
         seriesList.push({
           name: funcNames[f],
           type: 'line',
-          data: seriesData[f],
+          data: dataArr,
           smooth: true,
+          connectNulls: true,
           symbol: 'circle',
-          symbolSize: 8,
-          lineStyle: { color: funcColors[f], width: 2 },
+          symbolSize: 9,
+          lineStyle: { color: funcColors[f], width: 2.5 },
           itemStyle: { color: funcColors[f] }
         });
       }
@@ -231,10 +284,9 @@
         formatter: (params) => {
           const lines = [params[0].axisValueLabel];
           params.forEach(p => {
-            const funcIdx = ['功能一（抗干扰）','功能二（视觉整合）','功能三（异步校准）','功能四（注意定位）'].indexOf(p.seriesName) + 1;
-            const unit = funcUnits[funcIdx] || '';
-            const extra = p.data.attempt != null ? ` (#${p.data.attempt})` : '';
-            lines.push(`${p.marker} ${p.seriesName}：<b>${p.value[1]} ${unit}</b>${extra}`);
+            if (p.value == null) return;
+            const v = (p.data && p.data.value != null) ? p.data.value : p.value;
+            lines.push(`${p.marker} ${p.seriesName}：<b>${v} 分</b>`);
           });
           return lines.join('<br/>');
         }
@@ -242,19 +294,22 @@
       legend: { top: 4, type: 'scroll' },
       grid: { left: 50, right: 20, top: 40, bottom: 40 },
       xAxis: {
-        type: 'time',
-        axisLabel: { fontSize: 11 }
+        type: 'category',
+        data: xCats,
+        axisLabel: { fontSize: 11, interval: 0, rotate: xCats.length > 6 ? 30 : 0 },
+        boundaryGap: false
       },
       yAxis: {
         type: 'value',
-        name: '阈值 / 指标',
+        name: '得分 (满分100)',
         nameTextStyle: { fontSize: 11 },
-        axisLabel: { fontSize: 11 }
+        min: 0, max: 100, interval: 25,
+        axisLabel: { fontSize: 11 },
+        splitLine: { lineStyle: { color: '#eee' } }
       },
       series: seriesList
     });
 
-    // 监听容器尺寸（折叠展开时）
     if (typeof ResizeObserver !== 'undefined') {
       const ro = new ResizeObserver(() => chart.resize());
       ro.observe(dom);

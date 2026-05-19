@@ -28,6 +28,45 @@ const AdaptiveEngine = (function () {
   const VERSION = '1.0.0';
 
   /* ============================================================
+   * AI 推荐起点 / 边界的合理范围（与 admin UI 档位严格对齐）
+   * ------------------------------------------------------------
+   * SNR             ∈ [-9, +9]   dB   （admin SNR 档位 [-9..+9]）
+   * Blur (模糊度)    ∈ [0, 20]    %    （admin 档位 [0,4,8,12,16,20]）
+   * SOA·视觉领先     ∈ [-300, 0]  ms   （admin 档位 [-300..+300]，视觉领先须 ≤0）
+   * SOA·听觉领先     ∈ [0, +300]  ms   （听觉领先须 ≥0）
+   * 干扰源衰减        ∈ [-12, 0]   dB   （≤0；过大会让任务过易）
+   * 总试次上限        ∈ [5, 200]   次
+   * 反转上限          ∈ [2, 20]    次
+   *
+   * 任何超出范围的推导值都会被 clamp 到边界，并在控制台打印 warning。
+   * ============================================================ */
+  const RANGES = {
+    snr:           { min: -9,   max:   9 },
+    blur:          { min:  0,   max:  20 },
+    soaVisualLead: { min: -300, max:   0 },   // 视觉领先：SOA ≤ 0
+    soaAudioLead:  { min:  0,   max: 300 },   // 听觉领先：SOA ≥ 0
+    distractor:    { min: -12,  max:   0 },   // 衰减必为非正值
+    totalTrials:   { min:  5,   max: 200 },
+    maxReversals:  { min:  2,   max:  20 }
+  };
+
+  /**
+   * 把任意数值约束到 [min, max] 区间内，超出则打印 warning 便于研究者察觉
+   */
+  function clampRange(value, range, label) {
+    if (value == null || !isFinite(value)) return value;
+    if (value < range.min) {
+      console.warn(`[AdaptiveEngine] ${label}=${value} 低于下限 ${range.min}，已自动 clamp`);
+      return range.min;
+    }
+    if (value > range.max) {
+      console.warn(`[AdaptiveEngine] ${label}=${value} 高于上限 ${range.max}，已自动 clamp`);
+      return range.max;
+    }
+    return value;
+  }
+
+  /* ============================================================
    * 1. 自适应难度配置生成（按用户给定的难度递推规则）
    * ============================================================ */
 
@@ -44,38 +83,47 @@ const AdaptiveEngine = (function () {
     const func4 = r.func4 || {};
 
     /* ---- 功能1：听觉抗干扰 ---- */
-    // 初始 SNR = threshold + 2.0 dB（略难于阈值，挑战听觉边界）
+    // 初始 SNR = threshold + 2.0 dB（略难于阈值，挑战听觉边界）→ clamp 到 SNR 档位范围
     const func1Threshold = numOr(func1.threshold, -3.0);
-    const func1InitialSNR = +(func1Threshold + 2.0).toFixed(2);
+    const func1InitialSNR = +clampRange(+(func1Threshold + 2.0).toFixed(2),
+                                         RANGES.snr, 'func1.initialSNR');
 
     /* ---- 功能2：视觉整合 ---- */
-    // 固定 SNR = fitClear.threshold + 1.0 dB
-    const func2BaseSNR = numOr(func2.fitClear && func2.fitClear.threshold,
-                                func1Threshold) + 1.0;
-    // 模糊度按 gain 动态切入：>3 从4, 1.5~3 从8, <1.5 从0
+    // 固定 SNR = fitClear.threshold + 1.0 dB → clamp
+    const func2BaseSNRRaw = numOr(func2.fitClear && func2.fitClear.threshold,
+                                   func1Threshold) + 1.0;
+    const func2BaseSNR = +clampRange(+func2BaseSNRRaw.toFixed(2),
+                                      RANGES.snr, 'func2.initialSNR');
+    // 模糊度按 gain 动态切入：>3 从4, 1.5~3 从8, <1.5 从0 → clamp 到 [0, 20]
     const gain = numOr(func2.gain, 0);
     let initialBlur;
     if (gain > 3.0)        initialBlur = 4;
     else if (gain >= 1.5)  initialBlur = 8;
     else                    initialBlur = 0;
+    initialBlur = clampRange(initialBlur, RANGES.blur, 'func2.initialBlur');
 
     /* ---- 功能3：视听异步校准 ---- */
-    // 固定 SNR = 功能1 threshold + 1.0 dB
-    const func3SNR = +(func1Threshold + 1.0).toFixed(2);
-    // 视觉领先起点：lowerSOA + 30 ms（窗口内部一点，逐步外推）
-    // 听觉领先起点：upperSOA - 20 ms
+    // 固定 SNR = 功能1 threshold + 1.0 dB → clamp 到 SNR 范围
+    const func3SNR = +clampRange(+(func1Threshold + 1.0).toFixed(2),
+                                  RANGES.snr, 'func3.initialSNR');
+    // 视觉领先起点：lowerSOA + 30 ms（窗口内部一点，逐步外推）→ clamp 到 [-300, 0]
+    // 听觉领先起点：upperSOA - 20 ms                              → clamp 到 [0, +300]
     const lowerSOA = numOr(func3.lowerSOA, -150);
     const upperSOA = numOr(func3.upperSOA,  100);
-    const visualLeadStart = +(lowerSOA + 30).toFixed(0);
-    const audioLeadStart  = +(upperSOA - 20).toFixed(0);
+    const visualLeadStart = clampRange(+(lowerSOA + 30).toFixed(0),
+                                        RANGES.soaVisualLead, 'func3.visualLeadStart');
+    const audioLeadStart  = clampRange(+(upperSOA - 20).toFixed(0),
+                                        RANGES.soaAudioLead,  'func3.audioLeadStart');
 
     /* ---- 功能4：注意定位 ---- */
-    // 初始 SNR = dualThreshold + 1.5 dB
+    // 初始 SNR = dualThreshold + 1.5 dB → clamp
     const dualThreshold = numOr(func4.dualThreshold, -2.0);
-    const func4InitialSNR = +(dualThreshold + 1.5).toFixed(2);
-    // 干扰源衰减：cost > 3 → -3 dB（更降低干扰强度），否则 0 dB
+    const func4InitialSNR = +clampRange(+(dualThreshold + 1.5).toFixed(2),
+                                         RANGES.snr, 'func4.initialSNR');
+    // 干扰源衰减：cost > 3 → -3 dB（更降低干扰强度），否则 0 dB → clamp 到 [-12, 0]
     const cost = numOr(func4.cost, 0);
-    const distractorAttenuation = cost > 3.0 ? -3.0 : 0.0;
+    const distractorAttenuation = clampRange(cost > 3.0 ? -3.0 : 0.0,
+                                              RANGES.distractor, 'func4.distractorAttenuation');
 
     return {
       func1: {
@@ -85,9 +133,9 @@ const AdaptiveEngine = (function () {
         snrMode: 'adaptive'
       },
       func2: {
-        initialSNR: +func2BaseSNR.toFixed(2),
+        initialSNR: func2BaseSNR,
         initialBlur: initialBlur,
-        snrLevels: [+func2BaseSNR.toFixed(2)],
+        snrLevels: [func2BaseSNR],
         blurLevels: buildBlurLevels(initialBlur),
         repetitions: 4,
         snrMode: 'fixed'
@@ -344,6 +392,8 @@ const AdaptiveEngine = (function () {
 
   return {
     VERSION:                  VERSION,
+    RANGES:                   RANGES,                  // ★ 暴露合理范围常量给 admin.html 使用
+    clampRange:               clampRange,
     generateNextConfig:       generateNextConfig,
     saveNextSessionSettings:  saveNextSessionSettings,
     calculateCognitiveScore:  calculateCognitiveScore,
