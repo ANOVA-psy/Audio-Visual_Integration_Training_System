@@ -112,23 +112,26 @@ const AdminSettings = (function () {
    */
   function saveSettingsToFile(subjectId) {
     const subjectData = getSettingsBySubject(subjectId);
-    if (!subjectData) return;
+    if (!subjectData) return Promise.resolve(false);
 
     const filename = `${subjectId}.json`;
 
     // 使用 fetch API 保存到服务器
-    fetch('/api/save-config', {
+    return fetch('/api/save-config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ filename: filename, data: subjectData })
     }).then(response => {
       if (response.ok) {
         console.log('[AdminSettings] 已保存到文件', filename);
+        return true;
       } else {
         console.warn('[AdminSettings] 保存到文件失败，可能服务器未启动，仅保存到 localStorage');
+        return false;
       }
     }).catch(err => {
       console.warn('[AdminSettings] 保存到文件失败，可能服务器未启动，仅保存到 localStorage', err);
+      return false;
     });
   }
 

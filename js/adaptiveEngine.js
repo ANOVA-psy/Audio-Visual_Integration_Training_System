@@ -267,34 +267,32 @@ const AdaptiveEngine = (function () {
     const window    = numOr(r.func3 && r.func3.window,    null);
     const cost      = numOr(r.func4 && r.func4.cost,      null);
 
-    // 1. 听觉基底分（threshold 越低分越高）
-    //    -6dB 及以下 → 100；0dB → 50；正值快速衰减
-    //    用分段线性 + sigmoid 平滑
-    const auditory = scoreThreshold(threshold);
-
-    // 2. 视觉代偿能力（gain >= 4dB → 100；0dB → 0；线性映射）
-    const visual = scoreGain(gain);
-
-    // 3. 时空整合精准度（|window - 150| 偏差越小分越高）
-    //    偏差 0 → 100；偏差 >= 150 → 0
+    // 各维度评分；无数据维度返回 null，不参与总分计算
+    const auditory    = scoreThreshold(threshold);
+    const visual      = scoreGain(gain);
     const integration = scoreWindow(window);
+    const attention   = scoreCost(cost);
 
-    // 4. 注意抑制效率（cost <= 0 → 100；cost >= 4 → 20 低分；线性）
-    const attention = scoreCost(cost);
-
-    // 加权总分
-    const total = Math.round(
-      auditory   * 0.30 +
-      visual     * 0.30 +
-      integration * 0.20 +
-      attention   * 0.20
-    );
+    // 仅对有数据的维度做加权归一化（避免未测试维度污染总分）
+    const dims = [
+      { score: auditory,    weight: 0.30 },
+      { score: visual,      weight: 0.30 },
+      { score: integration, weight: 0.20 },
+      { score: attention,   weight: 0.20 }
+    ];
+    const valid = dims.filter(d => d.score != null && isFinite(d.score));
+    let total = null;
+    if (valid.length > 0) {
+      const wSum = valid.reduce((a, d) => a + d.weight, 0);
+      const sSum = valid.reduce((a, d) => a + d.score * d.weight, 0);
+      total = Math.round(sSum / wSum);
+    }
 
     return {
-      auditory:    Math.round(auditory),
-      visual:      Math.round(visual),
-      integration: Math.round(integration),
-      attention:   Math.round(attention),
+      auditory:    auditory    == null ? null : Math.round(auditory),
+      visual:      visual      == null ? null : Math.round(visual),
+      integration: integration == null ? null : Math.round(integration),
+      attention:   attention   == null ? null : Math.round(attention),
       total:       total,
       // 附带原始指标，方便前端展示
       raw: { threshold, gain, window, cost }
@@ -303,8 +301,9 @@ const AdaptiveEngine = (function () {
 
   // 标准：-6dB 满分；0dB 50分；+6dB 趋近 0
   // 使用线性段拼接：[-Inf,-6]=100; (-6, 6) 线性从 100→0 经过 (0, 50); [6,+Inf]=0
+  // ★ 无数据返回 null（不参与总分）
   function scoreThreshold(t) {
-    if (t == null || !isFinite(t)) return 50;
+    if (t == null || !isFinite(t)) return null;
     if (t <= -6) return 100;
     if (t >= 6)  return 0;
     // 在 (-6, 6) 之间线性：t=-6→100, t=0→50, t=6→0
@@ -312,24 +311,27 @@ const AdaptiveEngine = (function () {
   }
 
   // gain >= 4 → 100；gain <= 0 → 0；线性
+  // ★ 无数据返回 null
   function scoreGain(g) {
-    if (g == null || !isFinite(g)) return 0;
+    if (g == null || !isFinite(g)) return null;
     if (g >= 4) return 100;
     if (g <= 0) return 0;
     return (g / 4) * 100;
   }
 
   // 常模 150ms。|window - 150| = 0 → 100；偏差 >= 150 → 0
+  // ★ 无数据返回 null
   function scoreWindow(w) {
-    if (w == null || !isFinite(w)) return 50;
+    if (w == null || !isFinite(w)) return null;
     const dev = Math.abs(w - 150);
     if (dev >= 150) return 0;
     return clamp(100 - (dev / 150) * 100, 0, 100);
   }
 
   // cost <= 0 → 100；cost >= 4 → 20；线性映射（保留下限）
+  // ★ 无数据返回 null
   function scoreCost(c) {
-    if (c == null || !isFinite(c)) return 60;
+    if (c == null || !isFinite(c)) return null;
     if (c <= 0) return 100;
     if (c >= 4) return 20;
     return clamp(100 - (c / 4) * 80, 20, 100);
@@ -409,16 +411,18 @@ const AdaptiveEngine = (function () {
      * @returns {number} 0-100
      */
     scoreRecord: function (record) {
-      if (!record || !record.metadata) return 0;
+      if (!record || !record.metadata) return null;
       const f   = record.metadata.func;
       const fit = record.psychometricFit || {};
+      let s = null;
       switch (f) {
-        case 1: return Math.round(scoreThreshold(numOr(fit.threshold, numOr(record.metadata.threshold, null))));
-        case 2: return Math.round(scoreGain(numOr(fit.gain, numOr(record.metadata.threshold, null))));
-        case 3: return Math.round(scoreWindow(numOr(fit.window, numOr(record.metadata.threshold, null))));
-        case 4: return Math.round(scoreCost(numOr(fit.cost, numOr(record.metadata.threshold, null))));
-        default: return 0;
+        case 1: s = scoreThreshold(numOr(fit.threshold, numOr(record.metadata.threshold, null))); break;
+        case 2: s = scoreGain(numOr(fit.gain, numOr(record.metadata.threshold, null))); break;
+        case 3: s = scoreWindow(numOr(fit.window, numOr(record.metadata.threshold, null))); break;
+        case 4: s = scoreCost(numOr(fit.cost, numOr(record.metadata.threshold, null))); break;
+        default: return null;
       }
+      return (s == null || !isFinite(s)) ? null : Math.round(s);
     }
   };
 })();

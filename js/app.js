@@ -237,6 +237,17 @@
       AdminSettings.saveSettings(subjectId, phase, func, preset, gender, age);
     }
     console.log(`[generateSubjectSettings] 已为 ${subjectId} 生成 ${phase} 阶段的预设配置`);
+
+    // 检测文件是否成功写入磁盘（若服务器不可用则提示用户）
+    AdminSettings.saveSettingsToFile(subjectId).then(function(ok) {
+      if (ok === false && typeof UIHelper !== 'undefined') {
+        UIHelper.showNotification(
+          '⚠️ 配置文件未能写入磁盘（服务器未启动）。数据仅保存在浏览器中，刷新页面后可能丢失。请通过 `node server.js` 启动服务器后重新确认。',
+          'warning',
+          8000
+        );
+      }
+    });
   }
 
   function updateGuideScreen(phase) {
@@ -2409,16 +2420,7 @@
     const rDur = document.getElementById('rDuration');
     if (rDur) rDur.textContent = durMin > 0 ? `${durMin}min` : '<1min';
 
-    // 鼓励语
-    const msg = document.getElementById('encourageMsg');
-    if (msg) {
-      const phaseMsg = {
-        pre:   '基线测试完成，请告知工作人员，准备开始训练。',
-        train: `训练完成！您的正确率是 ${accuracy}%，继续加油！`,
-        post:  `后测完成，正确率 ${accuracy}%。请告知工作人员查看您的进步情况。`
-      };
-      msg.querySelector('div').textContent = phaseMsg[STATE.phase] || '本次训练已完成，请告知工作人员。';
-    }
+    // 鼓励语已移除：结果分析页改为基于分数的生活化解释，由 result.html 渲染。
 
     const funcNames  = { 1:'功能一', 2:'功能二', 3:'功能三', 4:'功能四' };
     const phaseNames = { pre:'训练前测试', train:'训练阶段', post:'训练后测试' };

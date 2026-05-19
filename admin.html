@@ -803,15 +803,35 @@
     const snap = window.getAIRecoSnapshot();
     if (!snap || !snap.funcConfig) return;
 
-    // 调用 applyAIRecommendation（含程序化勾选 + 试次统计刷新 + 切到 ai 模式）
-    // 但要"静默"：临时屏蔽 UIHelper 通知
-    if (silent && typeof UIHelper !== 'undefined') {
-      const _origNotify = UIHelper.showNotification;
-      UIHelper.showNotification = function () { /* no-op */ };
-      try { applyAIRecommendation(); } finally { UIHelper.showNotification = _origNotify; }
-    } else {
-      applyAIRecommendation();
+    // ★ 关键判断：无历史评估数据 → 退回系统默认（不应用 AI）
+    //   有数据 → 应用 AI 推荐
+    const hasEval = !!(_aiRecoState && _aiRecoState.hasEval);
+    const doSilently = (fn) => {
+      if (silent && typeof UIHelper !== 'undefined') {
+        const _origNotify = UIHelper.showNotification;
+        UIHelper.showNotification = function () { /* no-op */ };
+        try { fn(); } finally { UIHelper.showNotification = _origNotify; }
+      } else {
+        fn();
+      }
+    };
+
+    if (!hasEval) {
+      // 无数据 → 应用系统默认（但不关闭 _aiAutoApplyEnabled，
+      // 这样后续被试录入数据后再切回训练阶段仍可自动应用 AI）
+      doSilently(() => {
+        if (typeof AdminSettings !== 'undefined' && typeof AdminSettings.applyDefaultSettings === 'function') {
+          window._suppressManualWatch = true;
+          try { AdminSettings.applyDefaultSettings(); } finally { window._suppressManualWatch = false; }
+          if (typeof triggerTrialSummaryRefresh === 'function') triggerTrialSummaryRefresh();
+          setVarMode('default');
+        }
+      });
+      return;
     }
+
+    // 有数据 → 应用 AI 推荐（含程序化勾选 + 试次统计刷新 + 切到 ai 模式）
+    doSilently(() => { applyAIRecommendation(); });
   }
 
 
@@ -994,32 +1014,43 @@
     }
   }
 
-  // 初始化：从最近创建的 settings 文件自动同步被试信息
+  // 初始化：自动同步被试信息
+  // 优先级：localStorage（index 写入的最新值） > settings 最近被试 > 硬编码默认值
   (function() {
     try {
-      // 优先从 AdminSettings.getLatestSubject() 获取最近被试
-      if (typeof AdminSettings !== 'undefined') {
+      const subjectInput = document.getElementById('subjectId');
+      if (!subjectInput) return;
+
+      // 1) 优先从 localStorage 读取（index 页 quickStart 确认后会写入）
+      const lastSubjectId = localStorage.getItem('lastSubjectId');
+      if (lastSubjectId) {
+        subjectInput.value = lastSubjectId;
+        console.log('[admin] 从 localStorage 同步被试:', lastSubjectId);
+      }
+
+      // 2) 如果 localStorage 没有值，再从 settings 中获取最近被试
+      if (!subjectInput.value && typeof AdminSettings !== 'undefined') {
         const latest = AdminSettings.getLatestSubject();
         if (latest && latest.subjectId) {
-          const subjectInput = document.getElementById('subjectId');
-          if (subjectInput) subjectInput.value = latest.subjectId;
-          // 同步到 localStorage
+          subjectInput.value = latest.subjectId;
           localStorage.setItem('lastSubjectId', latest.subjectId);
           if (latest.gender) localStorage.setItem('lastGender', latest.gender);
           if (latest.age) localStorage.setItem('lastAge', latest.age);
           console.log('[admin] 从 settings 同步最近被试:', latest.subjectId);
-          return; // settings 数据优先，不再读 localStorage
         }
       }
 
-      // 回退：从 localStorage 读取
-      const lastSubjectId = localStorage.getItem('lastSubjectId');
-      if (lastSubjectId) {
-        const subjectInput = document.getElementById('subjectId');
-        if (subjectInput && !subjectInput.value) {
-          subjectInput.value = lastSubjectId;
+      // 3) 监听跨页面 localStorage 变化（index 写入新被试时实时同步）
+      window.addEventListener('storage', function(e) {
+        if (e.key === 'lastSubjectId' && e.newValue && subjectInput) {
+          subjectInput.value = e.newValue;
+          console.log('[admin] 检测到跨页面被试切换:', e.newValue);
+          // 触发 admin 内部的被试加载逻辑（如果有的话）
+          if (typeof onSubjectIdChange === 'function') {
+            onSubjectIdChange(e.newValue);
+          }
         }
-      }
+      });
     } catch (e) {
       console.warn('[admin] 初始化同步失败', e);
     }

@@ -140,6 +140,7 @@ const ResultCharts = (function () {
         {
           name: '原始数据',
           type: 'scatter',
+          symbol: 'circle',
           data: scatter,
           itemStyle: { color: '#6366f1' },
           z: 3
@@ -158,13 +159,13 @@ const ResultCharts = (function () {
             lineStyle: { color: '#ef4444', type: 'dashed', width: 2 },
             label: { show: false },
             data: ([
-              { yAxis: CRITERION, name: 'Criterion 0.75' },
+              { yAxis: CRITERION, name: '判别基准 0.75' },
               threshold != null ? { xAxis: threshold } : null,
               threshold != null ? {
                 xAxis: threshold,
                 label: {
                   show: true,
-                  formatter: `Threshold: ${threshold.toFixed(1)} dB`,
+                  formatter: `阈值: ${threshold.toFixed(1)} dB`,
                   position: 'insideEndTop',
                   color: '#dc2626',
                   fontWeight: 'bold',
@@ -203,7 +204,7 @@ const ResultCharts = (function () {
     const gain     = (fit.gain != null) ? +fit.gain : (thrBlur != null && thrClear != null ? (thrBlur - thrClear) : null);
 
     const markLineData = [
-      { yAxis: CRITERION, name: 'Criterion 0.75',
+      { yAxis: CRITERION, name: '判别基准 0.75',
         lineStyle: { color: '#ef4444', type: 'dashed', width: 2 } }
     ];
     if (thrClear != null) markLineData.push({ xAxis: thrClear, lineStyle: { color: '#3b82f6', type: 'dashed' } });
@@ -223,7 +224,7 @@ const ResultCharts = (function () {
         textStyle: { fontSize: 16 }
       },
       tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
-      legend: { top: 30, data: ['清晰口型', '模糊口型', '原始 · 清晰', '原始 · 模糊'] },
+      legend: { top: 30, data: ['清晰口型（拟合曲线）', '模糊口型（拟合曲线）', '清晰口型（实测）', '模糊口型（实测）'] },
       grid: { left: 60, right: 40, top: 80, bottom: 60 },
       xAxis: {
         type: 'value',
@@ -236,35 +237,37 @@ const ResultCharts = (function () {
       yAxis: yAxisDef('正确率'),
       series: [
         {
-          name: '清晰口型', type: 'line', data: curveClear, smooth: true, showSymbol: false,
+          name: '清晰口型（拟合曲线）', type: 'line', data: curveClear, smooth: true, showSymbol: false,
           lineStyle: { color: '#3b82f6', width: 3 },
           markLine: {
             silent: true, symbol: 'none', data: markLineData
           }
         },
         {
-          name: '模糊口型', type: 'line', data: curveBlur, smooth: true, showSymbol: false,
-          lineStyle: { color: '#ef4444', width: 3 }
+          name: '模糊口型（拟合曲线）', type: 'line', data: curveBlur, smooth: true, showSymbol: false,
+          lineStyle: { color: '#ef4444', width: 3, type: 'dashed' }
         },
         {
-          name: '原始 · 清晰', type: 'scatter',
+          name: '清晰口型（实测）', type: 'scatter',
+          symbol: 'circle',
           data: (fit.fitClear.data || []).map(d => [d.x, d.y]),
-          itemStyle: { color: '#3b82f6' }, symbolSize: 10
+          itemStyle: { color: '#3b82f6' }, symbolSize: 12
         },
         {
-          name: '原始 · 模糊', type: 'scatter',
+          name: '模糊口型（实测）', type: 'scatter',
+          symbol: 'rect',
           data: (fit.fitBlur.data || []).map(d => [d.x, d.y]),
-          itemStyle: { color: '#ef4444' }, symbolSize: 10
+          itemStyle: { color: '#ef4444' }, symbolSize: 11
         },
         // 用 markLine + markPoint 模拟带文字的横向箭头线段
         (thrClear != null && thrBlur != null && gain != null) ? {
-          name: 'Visual Gain', type: 'line', data: [],
+          name: '视觉增益', type: 'line', data: [],
           markLine: {
             silent: true,
             symbol: ['arrow', 'arrow'],
             label: {
               show: true,
-              formatter: `Visual Gain = ${gain.toFixed(1)} dB`,
+              formatter: `视觉增益 = ${gain.toFixed(1)} dB`,
               position: 'middle',
               color: '#065f46',
               backgroundColor: '#d1fae5',
@@ -340,7 +343,7 @@ const ResultCharts = (function () {
       yAxis: yAxisDef('正确率'),
       series: [
         {
-          name: '原始数据', type: 'scatter', data: scatter,
+          name: '原始数据', type: 'scatter', symbol: 'triangle', data: scatter,
           itemStyle: { color: '#f59e0b' }, z: 3
         },
         {
@@ -365,7 +368,7 @@ const ResultCharts = (function () {
             silent: true, symbol: 'none',
             lineStyle: { color: '#ef4444', type: 'dashed', width: 2 },
             data: [
-              { yAxis: CRITERION, name: 'Criterion 0.75' },
+              { yAxis: CRITERION, name: '判别基准 0.75' },
               { xAxis: 0, lineStyle: { color: '#9ca3af', type: 'solid', width: 1 } }
             ]
           }
@@ -404,7 +407,7 @@ const ResultCharts = (function () {
         { text: '单 / 双任务阈值对比', left: '70%', top: 36, textStyle: { fontSize: 12, color: '#6b7280', fontWeight: 'normal' } }
       ],
       tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
-      legend: { top: 30, data: ['单任务 (Single)', '双任务 (Dual)'] },
+      legend: { top: 30, data: ['单任务（拟合曲线）', '双任务（拟合曲线）', '单任务（实测）', '双任务（实测）'] },
       grid: [
         { left: '6%',  right: '54%', top: 80, bottom: 60 },
         { left: '54%', right: '6%',  top: 80, bottom: 60 }
@@ -418,7 +421,7 @@ const ResultCharts = (function () {
         {
           gridIndex: 1,
           type: 'category',
-          data: ['Single', 'Dual'],
+          data: ['单任务', '双任务'],
           axisLabel: { fontSize: 14, fontWeight: 'bold' }
         }
       ],
@@ -432,35 +435,37 @@ const ResultCharts = (function () {
       series: [
         // 左 grid：S 型曲线
         {
-          name: '单任务 (Single)', type: 'line',
+          name: '单任务（拟合曲线）', type: 'line',
           xAxisIndex: 0, yAxisIndex: 0,
           data: curveSingle, smooth: true, showSymbol: false,
-          lineStyle: { color: '#9ca3af', width: 3 },
+          lineStyle: { color: '#6b7280', width: 3 },
           markLine: {
             silent: true, symbol: 'none',
             lineStyle: { color: '#ef4444', type: 'dashed', width: 2 },
-            data: [{ yAxis: CRITERION, name: 'Criterion 0.75' }]
+            data: [{ yAxis: CRITERION, name: '判别基准 0.75' }]
           }
         },
         {
-          name: '双任务 (Dual)', type: 'line',
+          name: '双任务（拟合曲线）', type: 'line',
           xAxisIndex: 0, yAxisIndex: 0,
           data: curveDual, smooth: true, showSymbol: false,
-          lineStyle: { color: '#a855f7', width: 3 }
+          lineStyle: { color: '#a855f7', width: 3, type: 'dashed' }
         },
         {
-          name: '_scatter_s', type: 'scatter', xAxisIndex: 0, yAxisIndex: 0,
+          name: '单任务（实测）', type: 'scatter', symbol: 'circle',
+          xAxisIndex: 0, yAxisIndex: 0,
           data: (fit.fitSingle.data || []).map(d => [d.x, d.y]),
-          itemStyle: { color: '#6b7280' }, symbolSize: 8
+          itemStyle: { color: '#6b7280' }, symbolSize: 11
         },
         {
-          name: '_scatter_d', type: 'scatter', xAxisIndex: 0, yAxisIndex: 0,
+          name: '双任务（实测）', type: 'scatter', symbol: 'diamond',
+          xAxisIndex: 0, yAxisIndex: 0,
           data: (fit.fitDual.data || []).map(d => [d.x, d.y]),
-          itemStyle: { color: '#a855f7' }, symbolSize: 8
+          itemStyle: { color: '#a855f7' }, symbolSize: 12
         },
         // 右 grid：柱状图
         {
-          name: '_bar', type: 'bar',
+          name: '阈值', type: 'bar',
           xAxisIndex: 1, yAxisIndex: 1,
           barWidth: '45%',
           data: [
@@ -478,7 +483,7 @@ const ResultCharts = (function () {
             lineStyle: { color: '#dc2626', width: 2 },
             label: {
               show: true,
-              formatter: `Interference Cost: +${cost.toFixed(1)} dB`,
+              formatter: `干扰成本: +${cost.toFixed(1)} dB`,
               position: 'middle',
               color: '#fff',
               backgroundColor: '#dc2626',
@@ -487,8 +492,8 @@ const ResultCharts = (function () {
               fontWeight: 'bold'
             },
             data: [[
-              { coord: ['Single', thrSingle] },
-              { coord: ['Dual',   thrDual]   }
+              { coord: ['单任务', thrSingle] },
+              { coord: ['双任务', thrDual]   }
             ]]
           } : undefined
         }

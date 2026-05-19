@@ -935,7 +935,11 @@ const DataManager = (function () {
 
     // 评分（依赖 AdaptiveEngine 暴露的全局对象）
     const hasScorer = (typeof AdaptiveEngine !== 'undefined');
-    const scoreRec  = r => (hasScorer && r) ? AdaptiveEngine.scoreRecord(r) : '';
+    const scoreRec  = r => {
+      if (!hasScorer || !r) return '';
+      const s = AdaptiveEngine.scoreRecord(r);
+      return (typeof s === 'number' && isFinite(s)) ? s : '';
+    };
 
     // CSV 表头
     const headers = [

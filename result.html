@@ -16,99 +16,107 @@
 <body class="bg-slate-100 min-h-screen">
 
 <div class="container mx-auto px-4 py-6 max-w-6xl">
-  <div class="bg-white rounded-2xl shadow-xl p-8">
-    <div class="flex items-center justify-between mb-6">
-      <h2 class="text-2xl font-bold text-gray-800">📊 结果分析</h2>
-      <div class="flex gap-3">
-        <button onclick="goBack()" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-sm">← 返回</button>
-        <button onclick="printResult()" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-sm">🖨️ 打印</button>
-      </div>
-    </div>
+  <div class="bg-white rounded-2xl shadow-xl overflow-hidden">
 
-    <!-- 结果摘要 -->
-    <div id="resultSummary" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-      <div class="bg-blue-50 p-4 rounded-xl text-center">
-        <div class="text-sm text-gray-500">被试编号</div>
-        <div id="resSubject" class="text-xl font-bold text-blue-600">--</div>
-      </div>
-      <div class="bg-green-50 p-4 rounded-xl text-center">
-        <div class="text-sm text-gray-500">正确率</div>
-        <div id="rAcc" class="text-xl font-bold text-green-600">--%</div>
-      </div>
-      <div class="bg-purple-50 p-4 rounded-xl text-center">
-        <div class="text-sm text-gray-500">平均反应时</div>
-        <div id="rRT" class="text-xl font-bold text-purple-600">--ms</div>
-      </div>
-      <div class="bg-orange-50 p-4 rounded-xl text-center">
-        <div class="text-sm text-gray-500">试次总数</div>
-        <div id="rTotal" class="text-xl font-bold text-orange-600">--</div>
-      </div>
-    </div>
-
-    <!-- 子标题 -->
-    <div id="resSubtitle" class="text-center text-gray-500 mb-4"></div>
-
-    <!-- AVIS 综合认知指数 -->
-    <div id="avisCard" class="mb-6 p-5 rounded-2xl bg-gradient-to-br from-purple-50 via-white to-blue-50 border-2 border-purple-200 hidden">
-      <div class="flex items-center justify-between mb-3">
-        <div>
-          <div class="text-sm text-gray-500">综合认知指数 (AVIS)</div>
-          <div class="text-xs text-gray-400">融合 4 个维度的整体认知能力评分</div>
+    <!-- ═══ 顶部横幅：功能 · 阶段 ═══ -->
+    <div class="bg-gradient-to-r from-blue-500 via-purple-500 to-indigo-500 px-8 py-5 text-white">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <span class="text-3xl">🧠</span>
+          <div>
+            <div id="resSubtitle" class="text-xl md:text-2xl font-extrabold tracking-wide">--</div>
+            <div id="resSubjectLine" class="text-sm text-blue-100 mt-0.5">--</div>
+          </div>
         </div>
-        <div class="text-right">
-          <div id="avisTotal" class="text-4xl font-extrabold text-purple-600">--</div>
-          <div class="text-xs text-gray-400">满分 100</div>
-        </div>
-      </div>
-      <div class="grid grid-cols-4 gap-2 text-center text-xs">
-        <div class="p-2 bg-blue-50 rounded-lg">
-          <div class="text-gray-500">听觉基底 (30%)</div>
-          <div id="avisAud" class="font-bold text-blue-600 text-lg">--</div>
-        </div>
-        <div class="p-2 bg-purple-50 rounded-lg">
-          <div class="text-gray-500">视觉代偿 (30%)</div>
-          <div id="avisVis" class="font-bold text-purple-600 text-lg">--</div>
-        </div>
-        <div class="p-2 bg-orange-50 rounded-lg">
-          <div class="text-gray-500">时空整合 (20%)</div>
-          <div id="avisInt" class="font-bold text-orange-600 text-lg">--</div>
-        </div>
-        <div class="p-2 bg-red-50 rounded-lg">
-          <div class="text-gray-500">注意抑制 (20%)</div>
-          <div id="avisAtt" class="font-bold text-red-600 text-lg">--</div>
+        <div class="flex gap-2">
+          <button onclick="goBack()" class="px-4 py-2 bg-white/20 backdrop-blur text-white rounded-lg hover:bg-white/30 text-sm transition">← 返回</button>
+          <button onclick="printResult()" class="px-4 py-2 bg-white/20 backdrop-blur text-white rounded-lg hover:bg-white/30 text-sm transition">🖨️ 打印</button>
         </div>
       </div>
     </div>
 
-    <!-- 鼓励语 -->
-    <div id="encourageMsg" class="mb-6 p-4 bg-blue-50 rounded-xl text-center">
-      <div class="text-lg"></div>
-    </div>
+    <div class="p-6 md:p-8">
 
-    <!-- 阈值文字结果 -->
-    <div id="thresholdInfo" class="mb-6 p-5 bg-gray-50 rounded-xl hidden">
-      <div id="thresholdResultText" class="text-lg"></div>
-    </div>
+      <!-- ═══ 分数生活化解释（单行强调，置顶醒目） ═══ -->
+      <div id="scoreInterpret" class="mb-6 p-4 rounded-xl bg-gradient-to-r from-amber-50 via-yellow-50 to-orange-50 border-l-4 border-amber-400 text-base text-gray-800 font-medium leading-snug hidden flex items-center gap-2"></div>
 
-    <!-- 主图表区（单画布，按功能切换） -->
-    <div id="mainChartBox" class="bg-white border border-gray-200 rounded-xl p-3 mb-8 chart-box"></div>
-
-    <!-- 试次明细表格 -->
-    <div class="mb-8">
-      <h3 class="text-lg font-bold mb-4">📋 试次明细</h3>
-      <div class="overflow-x-auto">
-        <table class="w-full text-sm">
-          <thead id="resTableHead" class="bg-gray-100"></thead>
-          <tbody id="resTableBody"></tbody>
-        </table>
+      <!-- ═══ 结果摘要卡片 ═══ -->
+      <div id="resultSummary" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div class="bg-blue-50 p-4 rounded-xl text-center shadow-sm border border-blue-100">
+          <div class="text-xs text-gray-400 mb-1">👤 被试编号</div>
+          <div id="resSubject" class="text-xl font-bold text-blue-600">--</div>
+        </div>
+        <div class="bg-green-50 p-4 rounded-xl text-center shadow-sm border border-green-100">
+          <div class="text-xs text-gray-400 mb-1">🎯 正确率</div>
+          <div id="rAcc" class="text-xl font-bold text-green-600">--%</div>
+        </div>
+        <div class="bg-purple-50 p-4 rounded-xl text-center shadow-sm border border-purple-100">
+          <div class="text-xs text-gray-400 mb-1">⏱️ 平均反应时</div>
+          <div id="rRT" class="text-xl font-bold text-purple-600">--ms</div>
+        </div>
+        <div class="bg-orange-50 p-4 rounded-xl text-center shadow-sm border border-orange-100">
+          <div class="text-xs text-gray-400 mb-1">📝 试次总数</div>
+          <div id="rTotal" class="text-xl font-bold text-orange-600">--</div>
+        </div>
       </div>
-    </div>
 
-    <!-- 返回按钮 -->
-    <div class="text-center">
-      <button onclick="goBack()" class="px-6 py-3 bg-gray-200 text-gray-700 rounded-xl hover:bg-gray-300">
-        ← 返回历史记录
-      </button>
+      <!-- ═══ AVIS 综合认知指数 ═══ -->
+      <div id="avisCard" class="mb-6 p-5 rounded-2xl bg-gradient-to-br from-purple-50 via-white to-blue-50 border-2 border-purple-200 hidden">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <div class="text-sm font-semibold text-gray-500">📊 综合认知指数 (AVIS)</div>
+            <div class="text-xs text-gray-400">融合 4 个维度的整体认知能力评分</div>
+          </div>
+          <div class="text-right">
+            <div id="avisTotal" class="text-4xl font-extrabold text-purple-600">--</div>
+            <div class="text-xs text-gray-400">满分 100</div>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div class="p-3 bg-blue-50 rounded-xl text-center border border-blue-100">
+            <div class="text-xs text-gray-500">👂 听觉基底 <span class="text-blue-400">(30%)</span></div>
+            <div id="avisAud" class="font-bold text-blue-600 text-2xl mt-1">--</div>
+          </div>
+          <div class="p-3 bg-purple-50 rounded-xl text-center border border-purple-100">
+            <div class="text-xs text-gray-500">👁️ 视觉代偿 <span class="text-purple-400">(30%)</span></div>
+            <div id="avisVis" class="font-bold text-purple-600 text-2xl mt-1">--</div>
+          </div>
+          <div class="p-3 bg-orange-50 rounded-xl text-center border border-orange-100">
+            <div class="text-xs text-gray-500">🔗 时空整合 <span class="text-orange-400">(20%)</span></div>
+            <div id="avisInt" class="font-bold text-orange-600 text-2xl mt-1">--</div>
+          </div>
+          <div class="p-3 bg-red-50 rounded-xl text-center border border-red-100">
+            <div class="text-xs text-gray-500">🎯 注意抑制 <span class="text-red-400">(20%)</span></div>
+            <div id="avisAtt" class="font-bold text-red-600 text-2xl mt-1">--</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ 阈值文字结果 ═══ -->
+      <div id="thresholdInfo" class="mb-6 p-5 bg-gray-50 rounded-xl hidden">
+        <div id="thresholdResultText" class="text-lg"></div>
+      </div>
+
+      <!-- ═══ 主图表区 ═══ -->
+      <div id="mainChartBox" class="bg-white border border-gray-200 rounded-xl p-3 mb-8 chart-box"></div>
+
+      <!-- ═══ 试次明细表格 ═══ -->
+      <div class="mb-8">
+        <h3 class="text-lg font-bold mb-4 flex items-center gap-2">📋 试次明细</h3>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead id="resTableHead" class="bg-gray-100"></thead>
+            <tbody id="resTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ═══ 底部返回 ═══ -->
+      <div class="text-center">
+        <button onclick="goBack()" class="px-6 py-3 bg-gray-100 text-gray-600 rounded-xl hover:bg-gray-200 transition">
+          ← 返回历史记录
+        </button>
+      </div>
     </div>
   </div>
 </div>
@@ -186,24 +194,16 @@
     const avgRT = validRTs.length > 0 ? Math.round(validRTs.reduce((a,b)=>a+b,0)/validRTs.length) : 0;
     document.getElementById('rRT').textContent = avgRT + 'ms';
 
+    // 顶部：功能 · 阶段（加粗，置顶）
     document.getElementById('resSubtitle').textContent =
       `${funcNames[metadata.func] || '未知功能'} · ${phaseNames[metadata.phase] || metadata.phase}`;
-
-    // 鼓励语
-    const msg = document.getElementById('encourageMsg');
-    if (msg) {
-      const phaseMsg = {
-        pre:   '基线测试完成，请告知工作人员，准备开始训练。',
-        train: `训练完成！您的正确率是 ${accuracy}%，继续加油！`,
-        post:  `后测完成，正确率 ${accuracy}%。请告知工作人员查看您的进步情况。`
-      };
-      msg.querySelector('div').textContent = phaseMsg[metadata.phase] || '本次训练已完成，请告知工作人员。';
-    }
+    const subjLine = document.getElementById('resSubjectLine');
+    if (subjLine) subjLine.textContent = `被试 ${metadata.subjectId || '--'}`;
 
     // 阈值文字结果
     renderThresholdText(data);
 
-    // AVIS 综合认知指数（聚合该被试所有 active 评估）
+    // AVIS 综合认知指数 + 当前功能的分数生活化解释
     renderAVISCard(metadata.subjectId, metadata.func, data.psychometricFit);
 
     // 渲染表格
@@ -211,6 +211,64 @@
 
     // ECharts 主图（按功能分支）
     _mainChart = ResultCharts.render('mainChartBox', metadata.func, data);
+  }
+
+  // ==================== 各功能的"分数 → 生活化解释"映射 ====================
+  // 每个功能定义自己的 5 档解释（90+/75+/60+/40+/<40）
+  const SCORE_INTERPRET = {
+    1: { // 功能一（抗干扰 / 听觉基底）
+      label: '听觉抗噪能力',
+      bands: [
+        { min: 90, text: '在嘈杂环境（餐厅、地铁、聚会）中也能清晰听懂对方说话，几乎不需要别人重复。' },
+        { min: 75, text: '日常生活中绝大多数场景沟通顺畅，只在背景非常吵闹时偶尔需要对方再说一遍。' },
+        { min: 60, text: '安静环境下交流没问题，但在饭店、街边、人多的房间里听清对方会比较费力。' },
+        { min: 40, text: '稍有背景噪音就明显影响理解，常需要靠近对方、读唇或请对方重复。' },
+        { min: 0,  text: '即便在轻微噪音下也很难听清，长时间聆听容易疲劳，建议尽量在安静环境交流。' }
+      ]
+    },
+    2: { // 功能二（视觉整合 / 视觉代偿）
+      label: '看口型辅助听觉的能力',
+      bands: [
+        { min: 90, text: '能熟练借助说话人的口型与表情来"补全"听不清的语音，视觉与听觉协同非常好。' },
+        { min: 75, text: '能在多数情况下利用口型读取关键信息，遮挡或侧脸时仍可较好理解。' },
+        { min: 60, text: '面对面交流时口型有一定帮助，但戴口罩或低头时听清会变得困难。' },
+        { min: 40, text: '基本依赖耳朵听，视觉整合较弱；对方背光、戴口罩时容易漏掉信息。' },
+        { min: 0,  text: '尚未形成视觉代偿习惯，建议交流时多看着对方说话，以训练"看着听"的能力。' }
+      ]
+    },
+    3: { // 功能三（异步校准 / 时空整合）
+      label: '声音与画面同步感',
+      bands: [
+        { min: 90, text: '看视频、看电视时即便音画轻微不同步也很容易适应，言语理解几乎不受影响。' },
+        { min: 75, text: '日常视频通话或影视观看中音画不同步基本不构成困扰。' },
+        { min: 60, text: '音画明显错位时（例如网络卡顿、直播延迟）会感到不自然，但仍能理解内容。' },
+        { min: 40, text: '对音画不同步比较敏感，视频通话稍有延迟就影响理解，容易疲劳。' },
+        { min: 0,  text: '声音与画面只要不严格对齐就难以整合理解，建议优先选择面对面或低延迟通话。' }
+      ]
+    },
+    4: { // 功能四（注意定位 / 注意抑制）
+      label: '抗干扰与多任务处理',
+      bands: [
+        { min: 90, text: '一边听讲一边记笔记、多人同时说话时也能锁定目标声音，注意力分配能力很强。' },
+        { min: 75, text: '在课堂、会议等需要分配注意力的场景表现良好，偶尔会被突发声音短暂分心。' },
+        { min: 60, text: '安静的单任务下听得清，但同时听讲与做事时容易遗漏关键信息。' },
+        { min: 40, text: '只要有干扰声或同时处理多件事，听清对方就明显吃力，需要专心一件事。' },
+        { min: 0,  text: '抗干扰较弱，建议交流时关闭背景噪声、一次只聚焦一项任务。' }
+      ]
+    }
+  };
+
+  // 各功能对应的 emoji 图标
+  const FUNC_ICONS = { 1: '👂', 2: '👁️', 3: '🔗', 4: '🎯' };
+
+  // 根据当前功能 + 该功能维度分数（不是 AVIS 总分）给出一句解释（单行强调）
+  function buildScoreInterpret(func, dimScore) {
+    if (dimScore == null || !isFinite(dimScore)) return '';
+    const meta = SCORE_INTERPRET[func];
+    if (!meta) return '';
+    const band = meta.bands.find(b => dimScore >= b.min) || meta.bands[meta.bands.length - 1];
+    const icon = FUNC_ICONS[func] || '💡';
+    return `${icon} <b>${meta.label}：${dimScore} 分</b> — ${band.text}`;
   }
 
   function renderAVISCard(subjectId, currentFunc, currentFit) {
@@ -227,11 +285,27 @@
 
     const avis = AdaptiveEngine.calculateCognitiveScore(evalResults);
     card.classList.remove('hidden');
-    document.getElementById('avisTotal').textContent = avis.total;
-    document.getElementById('avisAud').textContent   = avis.auditory;
-    document.getElementById('avisVis').textContent   = avis.visual;
-    document.getElementById('avisInt').textContent   = avis.integration;
-    document.getElementById('avisAtt').textContent   = avis.attention;
+
+    // null 维度显示 --，避免"未测试就显示分数"
+    const fmt = v => (v == null || !isFinite(v)) ? '--' : v;
+    document.getElementById('avisTotal').textContent = fmt(avis.total);
+    document.getElementById('avisAud').textContent   = fmt(avis.auditory);
+    document.getElementById('avisVis').textContent   = fmt(avis.visual);
+    document.getElementById('avisInt').textContent   = fmt(avis.integration);
+    document.getElementById('avisAtt').textContent   = fmt(avis.attention);
+
+    // 当前功能的"分数 → 生活化解释"（已移到 AVIS 卡外部独立区域）
+    const interpretBox = document.getElementById('scoreInterpret');
+    if (interpretBox) {
+      const dimMap = { 1: avis.auditory, 2: avis.visual, 3: avis.integration, 4: avis.attention };
+      const html = buildScoreInterpret(currentFunc, dimMap[currentFunc]);
+      if (html) {
+        interpretBox.innerHTML = html;
+        interpretBox.classList.remove('hidden');
+      } else {
+        interpretBox.classList.add('hidden');
+      }
+    }
   }
 
   function renderThresholdText(data) {
@@ -243,7 +317,7 @@
 
     const lines = [];
     if (metadata.func === 1 && metadata.threshold != null) {
-      lines.push(`<div>噪音阈值（SNR @ 75%）：<strong class="text-xl text-blue-600">${(+metadata.threshold).toFixed(1)} dB</strong>` +
+      lines.push(`<div>噪音阈值（SNR正确率75%）：<strong class="text-xl text-blue-600">${(+metadata.threshold).toFixed(1)} dB</strong>` +
                  (fit && fit.r2 != null ? ` <span class="text-sm text-gray-500 ml-2">R² = ${(+fit.r2).toFixed(2)}</span>` : '') + `</div>`);
     } else if (metadata.func === 2 && fit && fit.gain != null) {
       lines.push(`<div>视觉增益（Visual Gain）：<strong class="text-xl text-purple-600">${(+fit.gain).toFixed(1)} dB</strong></div>`);
@@ -251,7 +325,9 @@
       if (fit.fitBlur)  lines.push(`<div>模糊阈值：<strong>${(+fit.fitBlur.threshold).toFixed(1)} dB</strong></div>`);
     } else if (metadata.func === 3 && fit && fit.window != null) {
       lines.push(`<div>整合时窗宽度：<strong class="text-xl text-orange-600">${(+fit.window).toFixed(0)} ms</strong></div>`);
-      lines.push(`<div class="text-sm text-gray-500">视觉领先：${(+fit.visualLeadWindow).toFixed(0)} ms · 听觉领先：${(+fit.audioLeadWindow).toFixed(0)} ms</div>`);
+      const vL = (fit.visualLeadWindow != null && isFinite(+fit.visualLeadWindow)) ? (+fit.visualLeadWindow).toFixed(0) : '--';
+      const aL = (fit.audioLeadWindow  != null && isFinite(+fit.audioLeadWindow))  ? (+fit.audioLeadWindow).toFixed(0)  : '--';
+      lines.push(`<div class="text-sm text-gray-500">视觉领先：${vL} ms · 听觉领先：${aL} ms</div>`);
     } else if (metadata.func === 4 && fit && fit.cost != null) {
       lines.push(`<div>双任务干扰抑制成本：<strong class="text-xl text-red-600">+${(+fit.cost).toFixed(1)} dB</strong></div>`);
       if (fit.singleThreshold != null) lines.push(`<div>单任务阈值：<strong>${(+fit.singleThreshold).toFixed(1)} dB</strong></div>`);

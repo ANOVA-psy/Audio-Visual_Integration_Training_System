@@ -183,8 +183,10 @@
     const chart = echarts.init(dom);
     window._historyChartInstances[subjectId] = chart;
 
-    const funcColors = { 1: '#3b82f6', 2: '#a855f7', 3: '#f59e0b', 4: '#ef4444' };
-    const funcNames  = { 1: '功能一（抗干扰）', 2: '功能二（视觉整合）', 3: '功能三（异步校准）', 4: '功能四（注意定位）' };
+    // 原配色 + 降低透明度 (rgba alpha=0.55) + 每条功能线用不同 symbol 区分
+    const funcColors  = { 1: 'rgba(59, 130, 246, 0.55)', 2: 'rgba(168, 85, 247, 0.55)', 3: 'rgba(245, 158, 11, 0.55)', 4: 'rgba(239, 68, 68, 0.55)' };
+    const funcSymbols = { 1: 'circle',  2: 'rect',    3: 'triangle', 4: 'diamond' };
+    const funcNames   = { 1: '功能一（抗干扰）', 2: '功能二（视觉整合）', 3: '功能三（异步校准）', 4: '功能四（注意定位）' };
 
     /* ----------------------------------------------------------
      * 数据展示规则：
@@ -259,10 +261,10 @@
           data: dataArr,
           smooth: true,
           connectNulls: true,
-          symbol: 'circle',
-          symbolSize: 9,
+          symbol: funcSymbols[f],
+          symbolSize: 10,
           lineStyle: { color: funcColors[f], width: 2.5 },
-          itemStyle: { color: funcColors[f] }
+          itemStyle: { color: funcColors[f], borderColor: '#fff', borderWidth: 1.5 }
         });
       }
     });
