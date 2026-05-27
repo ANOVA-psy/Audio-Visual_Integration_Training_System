@@ -49,7 +49,7 @@
 ## 1. 快速开始（一键启动）
 
 ```bash
-python 启动.py
+python setup.py
 ```
 
 支持 Windows / macOS / Linux。脚本会自动完成依赖检测、清端口、启动服务器与 ngrok。
@@ -201,7 +201,7 @@ node server.js
 
 ### 4.3 功能三：整合时窗 `window`
 
-**含义**：声音与画面错位多大范围内，被试还能整合理解。数值 **越宽 ≠ 越好**——存在 **150 ms 常模**：偏太小（敏感）或偏太大（不挑剔）都不理想。
+**含义**：声音与画面错位多大范围内，被试还能整合理解。数值 **越宽 ≠ 越好**——**100–300 ms 为正常整合范围**，低于 100 ms 说明对音画不同步过于敏感，高于 300 ms 则超出本系统测试范围。
 
 **计算步骤**（见 `modules/module3.js`）：
 1. 在 SOA $\in[-300, +300]$ ms 各档位测试，得到 SOA → 正确率
@@ -251,11 +251,14 @@ node server.js
 
 ```
 输入：w (ms)
-dev = |w − 150|
-若 dev ≥ 150   →  score = 0
-否则           →  score = 100 − (dev / 150) × 100
-关键锚点：w = 150 ms → 100；w = 75 / 225 ms → 50；w = 0 / 300 ms → 0
-（以 150 ms 为常模——既不过敏感也不过迟钝）
+若 w < 0         →  score = 0
+若 0 ≤ w < 100   →  score = w                           （线性：0 → 0，100 → 100）
+若 100 ≤ w ≤ 300 →  score = 100                         （正常整合范围，满分）
+若 300 < w ≤ 600 →  score = 100 − ((w − 300) / 300) × 100  （线性：300 → 100，600 → 0）
+若 w > 600       →  score = 0
+关键锚点：w = 100 ms → 100；w = 50 ms → 50；w = 0 ms → 0
+          w = 300 ms → 100；w = 450 ms → 50；w = 600 ms → 0
+（100–300 ms 为正常整合时窗；低于 100 ms 过于敏感，高于 300 ms 过于宽容）
 ```
 
 ### 5.4 注意抑制分 `scoreCost`
@@ -404,7 +407,7 @@ AVIS：   avis_auditory, avis_visual, avis_integration, avis_attention, avis_tot
 
 ```
 视听语音整合训练系统_v3/
-├── 启动.py                        # ⭐ Python 一键启动脚本（含依赖自动检测）
+├── setup.py                       # ⭐ Python 一键启动脚本（含依赖自动检测）
 ├── server.js                      # Node.js Express 后端服务器
 ├── upload_server.py               # Flask 文件上传服务器（备用）
 ├── package.json                   # Node.js 项目依赖配置
@@ -420,8 +423,7 @@ AVIS：   avis_auditory, avis_visual, avis_integration, avis_attention, avis_tot
 │
 ├── config/                        # 配置目录
 │   ├── constants.js               # 全局参数常量（Single Source of Truth）
-│   └── settings/                  # 按被试存储的配置
-│       └── {subjectId}.json       # 各被试的实验配置（如 P001.json）
+│   └── settings/                  # 按被试存储的配置（运行时生成）
 │
 ├── js/                            # JavaScript 核心模块
 │   ├── app.js                     # 主应用逻辑（状态管理、流程、阶梯接入）
@@ -433,8 +435,10 @@ AVIS：   avis_auditory, avis_visual, avis_integration, avis_attention, avis_tot
 │   ├── preloader.js               # 素材预加载（Cache API）
 │   ├── resultCharts.js            # 结果分析 ECharts 渲染
 │   ├── charts.js                  # 通用图表辅助
+│   ├── charts_backup.js           # 图表模块备份
 │   ├── uiHelper.js                # 通知 / Toast
 │   └── core/
+│       ├── EventLogger.js         # 事件日志记录
 │       ├── Staircase.js           # 基础阶梯算法
 │       └── StaircaseController.js # 训练阶段差异化阶梯控制 ★
 │
@@ -445,12 +449,23 @@ AVIS：   avis_auditory, avis_visual, avis_integration, avis_attention, avis_tot
 │   └── module4.js                 # 注意定位
 │
 ├── css/                           # 样式
+│   ├── style.css
+│   └── tailwind.min.css
+│
 ├── assets/                        # 实验素材（音视频）
+│   ├── audio/                     # 音频素材（噪音、语音等）
+│   └── video/                     # 视频素材（口型视频等）
+│
 ├── data/                          # 实验历史记录持久化
-│   └── experiment_history.json
-├── scripts/                       # 工具脚本
-│   └── generate_test_data_8888.js # 模拟数据生成（开发调试用）
-└── node_modules/                  # npm 依赖（npm install 自动生成）
+│   ├── backups/                   # 数据备份
+│   ├── exports/                   # 导出文件
+│   │   ├── csv/
+│   │   └── json/
+│   ├── subjects/                  # 被试相关数据
+│   └── uploads/                   # 上传文件存储
+│
+└── scripts/                       # 工具脚本
+    └── generate_test_data_8888.js # 模拟数据生成（开发调试用）
 ```
 
 ---

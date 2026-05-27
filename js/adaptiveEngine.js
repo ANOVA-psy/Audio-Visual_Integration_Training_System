@@ -319,13 +319,19 @@ const AdaptiveEngine = (function () {
     return (g / 4) * 100;
   }
 
-  // 常模 150ms。|window - 150| = 0 → 100；偏差 >= 150 → 0
+  // 整合时窗评分：
+  //   w < 100    → 线性递增 0→100（过于敏感，分数随宽度增加）
+  //   100~300 ms → 满分 100（正常整合范围）
+  //   300~600 ms → 线性递减 100→0（过宽/不挑剔）
+  //   w > 600    → 0（超出系统测试范围）
   // ★ 无数据返回 null
   function scoreWindow(w) {
     if (w == null || !isFinite(w)) return null;
-    const dev = Math.abs(w - 150);
-    if (dev >= 150) return 0;
-    return clamp(100 - (dev / 150) * 100, 0, 100);
+    if (w < 0) return 0;
+    if (w < 100) return clamp(w, 0, 100);
+    if (w <= 300) return 100;
+    // 300~600 ms: 线性递减 100→0
+    return clamp(100 - ((w - 300) / 300) * 100, 0, 100);
   }
 
   // cost <= 0 → 100；cost >= 4 → 20；线性映射（保留下限）
