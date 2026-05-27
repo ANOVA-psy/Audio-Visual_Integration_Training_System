@@ -11,7 +11,7 @@ import sys
 from flask import Flask, request, jsonify
 
 # ============ 配置 ============
-SAVE_DIR = r"D:\official_project\001_recognize&train\数据接收器"
+SAVE_DIR = r"D:\official_project\001_recognize&train\data_storage"
 PORT = 8001
 # ==============================
 
